@@ -88,6 +88,17 @@ APP_URL=http://localhost:3000
 ALLOWED_ORIGIN=http://localhost:5173
 ```
 
+### `.env` per Copy-Paste erzeugen
+
+```bash
+cat > .env <<'EOF'
+PORT=3000
+JWT_SECRET=change-me-to-a-long-random-secret
+APP_URL=http://localhost:3000
+ALLOWED_ORIGIN=http://localhost:5173
+EOF
+```
+
 ## Docker
 
 ### Docker Image bauen
@@ -113,6 +124,31 @@ docker compose up --build
 ```
 
 Die Anwendung ist danach unter `http://localhost:3000` erreichbar.
+
+### `docker-compose.yml` per Copy-Paste erzeugen
+
+```bash
+cat > docker-compose.yml <<'EOF'
+services:
+  wartungskalender:
+    image: ghcr.io/tobayashi-san/maintenance-planner:latest
+    container_name: wartungskalender
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./DB:/app/DB
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+EOF
+```
+
+Danach starten:
+
+```bash
+docker compose up -d
+```
 
 ## GitHub Container Registry
 
