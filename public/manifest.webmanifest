@@ -1,0 +1,18 @@
+{
+  "name": "Wartungskalender",
+  "short_name": "Wartung",
+  "description": "Installierbarer Wartungskalender mit Erinnerungen, Team-Ubersicht und Outlook-Feed.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#1d4ed8",
+  "lang": "de-CH",
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

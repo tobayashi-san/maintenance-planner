@@ -1,0 +1,17 @@
+services:
+  wartungskalender:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wartungskalender
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      JWT_SECRET: change-me-to-a-long-random-secret
+      APP_URL: http://localhost:3000
+    volumes:
+      - ./DB:/app/DB
+      - ./uploads:/app/uploads
+    restart: unless-stopped
