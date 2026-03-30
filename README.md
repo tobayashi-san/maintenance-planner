@@ -114,6 +114,16 @@ docker compose up --build
 
 Die Anwendung ist danach unter `http://localhost:3000` erreichbar.
 
+## GitHub Container Registry
+
+Das Repository ist für ein Container-Image über GitHub Actions vorbereitet. Bei jedem Push auf `main` und bei Tags wie `v1.0.0` wird automatisch ein Image nach `ghcr.io` veröffentlicht.
+
+Beispiel:
+
+```bash
+docker pull ghcr.io/tobayashi-san/maintenance-planner:latest
+```
+
 ## Datenhaltung
 
 - SQLite-Datei: `DB/database.sqlite`
