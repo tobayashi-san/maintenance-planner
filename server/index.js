@@ -554,6 +554,11 @@ const canManageTask = (task, user) => {
     const assigneeIds = Array.isArray(task.assigneeIds) ? task.assigneeIds : parseAssigneeIds(task.assigneeIds);
     return assigneeIds.includes(user.id);
 };
+const canManageTaskDefinition = (task, user) => {
+    if (!task || !user) return false;
+    if (user.role === 'admin') return true;
+    return task.createdBy === user.id;
+};
 const canAccessAttachment = (user) => user?.role === 'admin';
 
 // --- Initialization ---
@@ -598,6 +603,7 @@ const migrateDb = () => {
     db.run("ALTER TABLE tasks ADD COLUMN lastReminderSent TEXT", () => {});
     db.run("ALTER TABLE tasks ADD COLUMN categoryId TEXT", () => {});
     db.run("ALTER TABLE tasks ADD COLUMN completionNote TEXT", () => {});
+    db.run("ALTER TABLE tasks ADD COLUMN createdBy TEXT", () => {});
     db.run(`CREATE TABLE IF NOT EXISTS templates (
         id TEXT PRIMARY KEY,
         title TEXT,
@@ -867,35 +873,52 @@ app.get('/api/tasks', authenticateToken, (req, res) => {
     });
 });
 
-app.post('/api/tasks', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/tasks', authenticateToken, (req, res) => {
     const t = req.body;
     const interval = parseInt(t.recurrenceInterval, 10);
     if (isNaN(interval) || interval < 1) {
         return res.status(400).json({ error: 'recurrenceInterval must be a positive integer' });
     }
-    db.run(`INSERT INTO tasks (id, title, date, description, status, recurrence, recurrenceInterval, recurrenceEndDate, assigneeIds, reminderDays, categoryId, completionNote)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [t.id, t.title, t.date, t.description, t.status, t.recurrence, interval, t.recurrenceEndDate, JSON.stringify(t.assigneeIds), t.reminderDays || 0, t.categoryId, t.completionNote || null],
+    const createdBy = req.user.role === 'admin' && t.createdBy ? t.createdBy : req.user.id;
+    const assigneeIds = req.user.role === 'admin'
+        ? (Array.isArray(t.assigneeIds) ? t.assigneeIds : [])
+        : [req.user.id];
+    db.run(`INSERT INTO tasks (id, title, date, description, status, recurrence, recurrenceInterval, recurrenceEndDate, assigneeIds, reminderDays, categoryId, completionNote, createdBy)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [t.id, t.title, t.date, t.description, t.status, t.recurrence, interval, t.recurrenceEndDate, JSON.stringify(assigneeIds), t.reminderDays || 0, t.categoryId, t.completionNote || null, createdBy],
         (err) => {
             if (err) res.status(500).json({ error: err.message });
-            else res.json(t);
+            else res.json({ ...t, assigneeIds, createdBy });
         }
     );
 });
 
-app.put('/api/tasks/:id', authenticateToken, requireAdmin, (req, res) => {
+app.put('/api/tasks/:id', authenticateToken, (req, res) => {
     const t = req.body;
     const interval = parseInt(t.recurrenceInterval, 10);
     if (isNaN(interval) || interval < 1) {
         return res.status(400).json({ error: 'recurrenceInterval must be a positive integer' });
     }
-    db.run(`UPDATE tasks SET title=?, date=?, description=?, status=?, recurrence=?, recurrenceInterval=?, recurrenceEndDate=?, assigneeIds=?, reminderDays=?, categoryId=?, completionNote=? WHERE id=?`,
-        [t.title, t.date, t.description, t.status, t.recurrence, interval, t.recurrenceEndDate, JSON.stringify(t.assigneeIds), t.reminderDays || 0, t.categoryId, t.completionNote || null, req.params.id],
-        (err) => {
-            if (err) res.status(500).json({ error: err.message });
-            else res.json(t);
+    db.get("SELECT * FROM tasks WHERE id = ?", [req.params.id], (taskErr, task) => {
+        if (taskErr) return res.status(500).json({ error: taskErr.message });
+        if (!task) return res.status(404).json({ error: 'Task not found' });
+        if (!canManageTaskDefinition(task, req.user)) {
+            return res.status(403).json({ error: 'Not allowed to edit this task' });
         }
-    );
+
+        const assigneeIds = req.user.role === 'admin'
+            ? (Array.isArray(t.assigneeIds) ? t.assigneeIds : [])
+            : parseAssigneeIds(task.assigneeIds || '[]');
+        const createdBy = task.createdBy || req.user.id;
+
+        db.run(`UPDATE tasks SET title=?, date=?, description=?, status=?, recurrence=?, recurrenceInterval=?, recurrenceEndDate=?, assigneeIds=?, reminderDays=?, categoryId=?, completionNote=? WHERE id=?`,
+            [t.title, t.date, t.description, t.status, t.recurrence, interval, t.recurrenceEndDate, JSON.stringify(assigneeIds), t.reminderDays || 0, t.categoryId, t.completionNote || null, req.params.id],
+            (err) => {
+                if (err) res.status(500).json({ error: err.message });
+                else res.json({ ...t, assigneeIds, createdBy });
+            }
+        );
+    });
 });
 
 app.put('/api/tasks/:id/status', authenticateToken, (req, res) => {
@@ -928,19 +951,27 @@ app.put('/api/tasks/:id/status', authenticateToken, (req, res) => {
     });
 });
 
-app.delete('/api/tasks/:id', authenticateToken, requireAdmin, (req, res) => {
-    // Also delete attachments from disk
-    db.all("SELECT filename FROM task_attachments WHERE taskId = ?", [req.params.id], (err, rows) => {
-        if (!err && rows) {
-            rows.forEach(row => {
-                const filePath = path.join(uploadsDir, row.filename);
-                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-            });
-            db.run("DELETE FROM task_attachments WHERE taskId = ?", [req.params.id]);
+app.delete('/api/tasks/:id', authenticateToken, (req, res) => {
+    db.get("SELECT * FROM tasks WHERE id = ?", [req.params.id], (taskErr, task) => {
+        if (taskErr) return res.status(500).json({ error: taskErr.message });
+        if (!task) return res.status(404).json({ error: 'Task not found' });
+        if (!canManageTaskDefinition(task, req.user)) {
+            return res.status(403).json({ error: 'Not allowed to delete this task' });
         }
-        db.run("DELETE FROM tasks WHERE id = ?", [req.params.id], (err) => {
-            if (err) res.status(500).json({ error: err.message });
-            else res.json({ message: 'Task deleted' });
+
+        // Also delete attachments from disk
+        db.all("SELECT filename FROM task_attachments WHERE taskId = ?", [req.params.id], (err, rows) => {
+            if (!err && rows) {
+                rows.forEach(row => {
+                    const filePath = path.join(uploadsDir, row.filename);
+                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                });
+                db.run("DELETE FROM task_attachments WHERE taskId = ?", [req.params.id]);
+            }
+            db.run("DELETE FROM tasks WHERE id = ?", [req.params.id], (deleteErr) => {
+                if (deleteErr) res.status(500).json({ error: deleteErr.message });
+                else res.json({ message: 'Task deleted' });
+            });
         });
     });
 });

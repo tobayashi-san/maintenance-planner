@@ -21,6 +21,7 @@ export interface Task {
     reminderDays?: number;
     categoryId?: string;
     completionNote?: string;
+    createdBy?: string;
 }
 
 export interface TaskOccurrenceOverride {

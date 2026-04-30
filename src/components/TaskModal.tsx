@@ -16,9 +16,11 @@ interface TaskModalProps {
 }
 
 const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initialData, selectedDate }) => {
-    const { users, smtpSettings, fetchAttachments, uploadAttachment, deleteAttachment } = useStore();
+    const { user, users, smtpSettings, fetchAttachments, uploadAttachment, deleteAttachment } = useStore();
     const { showToast } = useNotification();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const canManageAssignees = user?.role === 'admin';
+    const canManageAttachments = user?.role === 'admin';
 
     const [formData, setFormData] = useState<Task>({
         id: '',
@@ -55,7 +57,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
                 title: '',
                 date: selectedDate ? toLocalDateString(selectedDate) : toLocalDateString(new Date()),
                 description: '',
-                assigneeIds: users.length > 0 ? [users[0].id] : [],
+                assigneeIds: user ? [user.id] : users.length > 0 ? [users[0].id] : [],
                 status: 'pending',
                 recurrence: 'none',
                 recurrenceInterval: 1,
@@ -64,7 +66,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
             });
             setAttachments([]);
         }
-    }, [initialData, isOpen, selectedDate, users]);
+    }, [fetchAttachments, initialData, isOpen, selectedDate, user, users]);
 
     if (!isOpen) return null;
 
@@ -78,7 +80,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
             return;
         }
 
-        if (!initialData && taskToSave.assigneeIds.length > 0) {
+        if (user?.role === 'admin' && !initialData && taskToSave.assigneeIds.length > 0) {
             const assignees = users.filter(u => taskToSave.assigneeIds.includes(u.id));
             try {
                 const icsContent = generateIcsContent(taskToSave);
@@ -181,10 +183,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
                     <div>
                         {label('Assignees')}
                         <div className="task-modal-assignees">
-                            {users.map(u => {
+                            {(canManageAssignees ? users : users.filter((entry) => entry.id === user?.id)).map(u => {
                                 const selected = formData.assigneeIds.includes(u.id);
                                 return (
-                                    <button key={u.id} type="button" onClick={() => toggleAssignee(u.id)}
+                                    <button key={u.id} type="button" onClick={() => canManageAssignees && toggleAssignee(u.id)}
                                         className={`task-modal-assignee ${selected ? 'selected' : ''}`}>
                                         {u.name}
                                     </button>
@@ -259,7 +261,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                             {label('Attachments')}
-                            {initialData ? (
+                            {initialData && canManageAttachments ? (
                                 <>
                                     <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleFileUpload} />
                                     <button type="button" className="btn btn-ghost"
@@ -270,7 +272,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
                                     </button>
                                 </>
                             ) : (
-                                <span className="text-muted" style={{ fontSize: '12px' }}>Save task first to add attachments</span>
+                                <span className="text-muted" style={{ fontSize: '12px' }}>
+                                    {initialData ? 'Attachments are available for admins only' : 'Save task first to add attachments'}
+                                </span>
                             )}
                         </div>
                         {attachments.length > 0 && (
@@ -286,11 +290,13 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
                                             className="btn btn-ghost" style={{ padding: '0.2rem' }} title="Download" target="_blank" rel="noreferrer">
                                             <Download size={14} />
                                         </a>
-                                        <button type="button" className="btn btn-ghost"
-                                            style={{ padding: '0.2rem', color: 'var(--danger)' }}
-                                            onClick={() => handleDeleteAttachment(att.id)}>
-                                            <Trash2 size={14} />
-                                        </button>
+                                        {canManageAttachments && (
+                                            <button type="button" className="btn btn-ghost"
+                                                style={{ padding: '0.2rem', color: 'var(--danger)' }}
+                                                onClick={() => handleDeleteAttachment(att.id)}>
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>

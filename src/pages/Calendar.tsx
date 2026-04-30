@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Download, Link, CheckCircle2, CalendarDays, RotateCcw, SkipForward } from 'lucide-react';
+import { Plus, Download, Link, CheckCircle2, CalendarDays, RotateCcw, SkipForward, Info } from 'lucide-react';
 import { endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns';
 import CalendarGrid from '../components/CalendarGrid';
 import TaskModal from '../components/TaskModal';
@@ -117,6 +117,13 @@ const Calendar: React.FC = () => {
         }
     };
 
+    const showOutlookInfo = () => {
+        showToast(
+            'Hinweis: Das Outlook-Abo kann in Outlook fuer Microsoft 365 / Classic Outlook wegen eines bekannten Microsoft-Problems fehlschlagen, auch wenn der .ics-Link korrekt ist. Wenn das passiert, pruefe Outlook im Web als Workaround.',
+            'info'
+        );
+    };
+
     const handleOccurrenceStatus = async (task: TaskInstance, status: Task['status']) => {
         try {
             const completionNote = status === 'completed'
@@ -199,21 +206,31 @@ const Calendar: React.FC = () => {
                     <button onClick={handleExport} className="btn calendar-toolbar-btn">
                         <Download size={15} /> Export ICS
                     </button>
-                    <button title="Copy Outlook subscription URL" onClick={copyOutlookUrl} className="btn calendar-toolbar-btn">
+                    <button
+                        title="Copy Outlook subscription URL"
+                        onClick={copyOutlookUrl}
+                        className="btn calendar-toolbar-btn"
+                    >
                         <Link size={15} /> Outlook URL
                     </button>
-                    {user?.role === 'admin' && (
-                        <button
-                            onClick={() => {
-                                setSelectedDate(new Date());
-                                setEditingTask(null);
-                                setIsModalOpen(true);
-                            }}
-                            className="btn btn-primary"
-                        >
-                            <Plus size={15} /> Add Task
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        title="Hinweis zu Outlook-Abos"
+                        onClick={showOutlookInfo}
+                        className="btn calendar-toolbar-btn"
+                    >
+                        <Info size={15} /> Outlook Hinweis
+                    </button>
+                    <button
+                        onClick={() => {
+                            setSelectedDate(new Date());
+                            setEditingTask(null);
+                            setIsModalOpen(true);
+                        }}
+                        className="btn btn-primary"
+                    >
+                        <Plus size={15} /> Add Task
+                    </button>
                 </div>
             </div>
 
@@ -234,17 +251,15 @@ const Calendar: React.FC = () => {
                     </h3>
                     {selectedDate ? (
                         <div>
-                            {user?.role === 'admin' && (
-                                <button
-                                    onClick={() => {
-                                        setEditingTask(null);
-                                        setIsModalOpen(true);
-                                    }}
-                                    className="calendar-add-day-btn"
-                                >
-                                    + Add Task for this day
-                                </button>
-                            )}
+                            <button
+                                onClick={() => {
+                                    setEditingTask(null);
+                                    setIsModalOpen(true);
+                                }}
+                                className="calendar-add-day-btn"
+                            >
+                                + Add Task for this day
+                            </button>
                             <div className="calendar-task-list">
                                 {selectedTasks.length === 0 && (
                                     <p className="text-muted">No tasks for this day.</p>
@@ -292,7 +307,7 @@ const Calendar: React.FC = () => {
                                             </div>
                                         )}
 
-                                        {user?.role === 'admin' && (
+                                        {(user?.role === 'admin' || task.createdBy === user?.id) && (
                                             <div className="calendar-task-footer">
                                                 <button
                                                     onClick={() => {
