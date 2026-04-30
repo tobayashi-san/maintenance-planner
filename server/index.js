@@ -1213,7 +1213,7 @@ app.delete('/api/categories/:id', authenticateToken, requireAdmin, (req, res) =>
 });
 
 // 8. Email
-app.post('/api/email/send', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/email/send', authenticateToken, async (req, res) => {
     const { to, subject, body, icalEvent } = req.body;
     const cfg = await getSmtpTransport();
     if (!cfg) return res.status(400).json({ error: 'SMTP settings not configured' });
