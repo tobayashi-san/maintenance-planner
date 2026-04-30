@@ -10,6 +10,26 @@ Es gibt 2 sinnvolle Betriebsarten:
 
 Gut fuer einen schnellen Start im LAN.
 
+`docker-compose.yml`:
+
+```yaml
+services:
+  wartungskalender:
+    image: ${WARTUNGSKALENDER_IMAGE:-ghcr.io/tobayashi-san/maintenance-planner:latest}
+    container_name: wartungskalender
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    volumes:
+      - ./DB:/app/DB
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+```
+
 `.env`:
 
 ```env
@@ -41,6 +61,44 @@ Das ist die beste Variante fuer:
 - Browser-Benachrichtigungen
 
 Hier braucht ihr nur **eine Compose-Datei**. Caddy erzeugt die interne CA und das Zertifikat automatisch.
+
+`docker-compose.internal-tls.yml`:
+
+```yaml
+services:
+  wartungskalender:
+    image: ${WARTUNGSKALENDER_IMAGE:-ghcr.io/tobayashi-san/maintenance-planner:latest}
+    container_name: wartungskalender
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_URL: https://${INTERNAL_TLS_HOSTNAME}
+      ALLOWED_ORIGIN: https://${INTERNAL_TLS_HOSTNAME}
+    expose:
+      - "3000"
+    env_file:
+      - .env
+    volumes:
+      - ./DB:/app/DB
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: wartungskalender-internal-tls
+    depends_on:
+      - wartungskalender
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      INTERNAL_TLS_HOSTNAME: ${INTERNAL_TLS_HOSTNAME}
+    volumes:
+      - ./Caddyfile.internal-tls:/etc/caddy/Caddyfile:ro
+      - ./caddy_internal_data:/data
+      - ./caddy_internal_config:/config
+    restart: unless-stopped
+```
 
 #### Server
 
@@ -115,6 +173,40 @@ Danach sollten funktionieren:
 ## Oeffentliche HTTPS-Variante
 
 Wenn ihr spaeter doch eine oeffentliche Domain nutzen wollt:
+
+`docker-compose.proxy.yml`:
+
+```yaml
+services:
+  wartungskalender:
+    ports: !reset []
+    expose:
+      - "3000"
+    environment:
+      APP_URL: https://${PUBLIC_HOSTNAME}
+      ALLOWED_ORIGIN: https://${PUBLIC_HOSTNAME}
+
+  caddy:
+    image: caddy:2
+    container_name: wartungskalender-proxy
+    depends_on:
+      - wartungskalender
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+```
 
 `.env`:
 
