@@ -237,6 +237,7 @@ const Calendar: React.FC = () => {
             <div className="calendar-layout">
                 <CalendarGrid
                     currentDate={currentDate}
+                    selectedDate={selectedDate}
                     onDateChange={setCurrentDate}
                     tasks={visibleTasks}
                     onDayClick={(date) => {

@@ -449,6 +449,67 @@ const sendWeeklyDigestEmail = async (cfg, appUrl, user, upcomingTasks, overdueTa
         text: `Uberfallig: ${overdueTasks.length}, diese Woche fallig: ${upcomingTasks.length}`,
     });
 };
+const buildTaskCancellationIcs = (task, options = {}) => {
+    const occurrenceDate = normalizeOccurrenceDate(options.occurrenceDate || task.date || null);
+    const eventDate = options.eventDate || task.date || occurrenceDate || new Date();
+    const startDate = toDateValue(eventDate);
+    const endDate = toDateValue(addDays(new Date(eventDate), 1));
+    const sequence = Number(options.sequence || Math.floor(Date.now() / 1000));
+    const lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Wartungskalender//Maintenance Task//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:CANCEL',
+        'BEGIN:VEVENT',
+        `UID:${task.id}@wartungskalender.local`,
+        `DTSTAMP:${toUtcTimestamp(new Date())}`,
+        `DTSTART;VALUE=DATE:${startDate}`,
+        `DTEND;VALUE=DATE:${endDate}`,
+        `SUMMARY:${escapeIcs(task.title)}`,
+        'STATUS:CANCELLED',
+        `SEQUENCE:${sequence}`,
+    ];
+
+    if (task.description) lines.push(`DESCRIPTION:${escapeIcs(task.description)}`);
+    if (options.organizerEmail) lines.push(`ORGANIZER:MAILTO:${escapeIcs(options.organizerEmail)}`);
+    if (occurrenceDate && options.includeRecurrenceId) {
+        lines.push(`RECURRENCE-ID;VALUE=DATE:${toDateValue(occurrenceDate)}`);
+    }
+
+    lines.push('END:VEVENT', 'END:VCALENDAR');
+    return lines.map(foldLine).join('\r\n') + '\r\n';
+};
+const sendTaskCompletionCalendarUpdate = async (task, options = {}) => {
+    const assigneeIds = Array.isArray(task.assigneeIds) ? task.assigneeIds : parseAssigneeIds(task.assigneeIds);
+    if (assigneeIds.length === 0) return;
+
+    const cfg = await getSmtpTransport();
+    if (!cfg) return;
+
+    const recipients = await dbAllAsync(
+        `SELECT email FROM users WHERE id IN (${assigneeIds.map(() => '?').join(',')}) AND email IS NOT NULL AND email != ''`,
+        assigneeIds
+    );
+    const emails = recipients.map((row) => String(row.email || '').trim()).filter(Boolean);
+    if (emails.length === 0) return;
+
+    const icalEvent = buildTaskCancellationIcs(task, { ...options, organizerEmail: cfg.from });
+    const subject = options.includeRecurrenceId
+        ? `Kalendereintrag entfernt: ${task.title}`
+        : `Kalenderaufgabe abgeschlossen: ${task.title}`;
+    const text = options.includeRecurrenceId
+        ? `Das Vorkommen von "${task.title}" wurde abgeschlossen. Outlook kann den Kalendereintrag jetzt entfernen.`
+        : `Die Aufgabe "${task.title}" wurde abgeschlossen. Outlook kann den Kalendereintrag jetzt entfernen.`;
+
+    await cfg.transporter.sendMail({
+        from: cfg.from,
+        to: emails.join(', '),
+        subject,
+        text,
+        icalEvent: { content: icalEvent, method: 'CANCEL' },
+    });
+};
 const renderCalendarFeed = (res, taskRows, overrideRows) => {
     const tasks = taskRows.map((task) => ({ ...task, assigneeIds: task.assigneeIds ? JSON.parse(task.assigneeIds) : [] }));
     const overrides = (overrideRows || []).map((row) => ({ ...row, skipped: Boolean(row.skipped) }));
@@ -554,6 +615,7 @@ const canManageTask = (task, user) => {
     const assigneeIds = Array.isArray(task.assigneeIds) ? task.assigneeIds : parseAssigneeIds(task.assigneeIds);
     return assigneeIds.includes(user.id);
 };
+const canUpdateTaskProgress = (_task, user) => Boolean(user?.id);
 const canManageTaskDefinition = (task, user) => {
     if (!task || !user) return false;
     if (user.role === 'admin') return true;
@@ -931,7 +993,7 @@ app.put('/api/tasks/:id/status', authenticateToken, (req, res) => {
     db.get("SELECT * FROM tasks WHERE id = ?", [req.params.id], (taskErr, task) => {
         if (taskErr) return res.status(500).json({ error: taskErr.message });
         if (!task) return res.status(404).json({ error: 'Task not found' });
-        if (!canManageTask(task, req.user)) {
+        if (!canUpdateTaskProgress(task, req.user)) {
             return res.status(403).json({ error: 'Not allowed to update this task' });
         }
 
@@ -940,12 +1002,18 @@ app.put('/api/tasks/:id/status', authenticateToken, (req, res) => {
             [status, completionNote || null, req.params.id],
             (err) => {
                 if (err) return res.status(500).json({ error: err.message });
-                res.json({
+                const updatedTask = {
                     ...task,
                     assigneeIds: task.assigneeIds ? JSON.parse(task.assigneeIds) : [],
                     status,
                     completionNote: completionNote || null,
-                });
+                };
+                res.json(updatedTask);
+                if (status === 'completed') {
+                    sendTaskCompletionCalendarUpdate(updatedTask).catch((error) => {
+                        console.error('Failed to send completion calendar update', error);
+                    });
+                }
             }
         );
     });
@@ -1045,10 +1113,10 @@ app.put('/api/tasks/:id/occurrences', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'A valid occurrenceDate is required' });
     }
 
-    db.get("SELECT id, assigneeIds FROM tasks WHERE id = ?", [req.params.id], (taskErr, task) => {
+    db.get("SELECT * FROM tasks WHERE id = ?", [req.params.id], (taskErr, task) => {
         if (taskErr) return res.status(500).json({ error: taskErr.message });
         if (!task) return res.status(404).json({ error: 'Task not found' });
-        if (!canManageTaskOccurrence(task, req.user)) {
+        if (!canUpdateTaskProgress(task, req.user)) {
             return res.status(403).json({ error: 'Not allowed to update this occurrence' });
         }
 
@@ -1088,6 +1156,16 @@ app.put('/api/tasks/:id/occurrences', authenticateToken, (req, res) => {
             (err) => {
                 if (err) return res.status(500).json({ error: err.message });
                 res.json({ ...payload, skipped: Boolean(payload.skipped) });
+                if (payload.status === 'completed') {
+                    const normalizedTask = { ...task, assigneeIds: parseAssigneeIds(task.assigneeIds) };
+                    sendTaskCompletionCalendarUpdate(normalizedTask, {
+                        occurrenceDate: payload.occurrenceDate,
+                        eventDate: payload.date || task.date,
+                        includeRecurrenceId: true,
+                    }).catch((error) => {
+                        console.error('Failed to send occurrence completion calendar update', error);
+                    });
+                }
             }
         );
     });
@@ -1294,6 +1372,16 @@ app.get('/api/email/action', async (req, res) => {
                 "UPDATE tasks SET status = ?, completionNote = ? WHERE id = ?",
                 ['completed', completionNote, task.id]
             );
+        }
+
+        try {
+            await sendTaskCompletionCalendarUpdate(normalizedTask, {
+                occurrenceDate,
+                eventDate: targetDate,
+                includeRecurrenceId: Boolean(task.recurrence && task.recurrence !== 'none'),
+            });
+        } catch (mailError) {
+            console.error('Failed to send completion calendar update from email action', mailError);
         }
 
         const redirectPath = `${buildTaskPath({ originalTaskId: task.id, occurrenceDate })}&emailAction=completed`;

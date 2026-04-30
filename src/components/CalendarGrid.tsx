@@ -5,12 +5,13 @@ import { type Task } from '../store/useStore';
 
 interface CalendarGridProps {
     currentDate: Date;
+    selectedDate?: Date;
     onDateChange: (date: Date) => void;
     tasks: Task[];
     onDayClick: (date: Date) => void;
 }
 
-const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, onDateChange, tasks, onDayClick }) => {
+const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, selectedDate, onDateChange, tasks, onDayClick }) => {
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(monthStart);
     const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
@@ -55,6 +56,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, onDateChange, 
                     const dayTasks = tasks.filter(t => isSameDay(new Date(t.date), day));
                     const isCurrentMonth = isSameMonth(day, monthStart);
                     const isToday = isSameDay(day, new Date());
+                    const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
                     const isWeekend = [0, 6].includes(getDay(day));
                     const col = idx % 7;
                     const borderRight = col < 6 ? '1px solid var(--border-color)' : 'none';
@@ -66,12 +68,17 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, onDateChange, 
                         <div
                             key={day.toISOString()}
                             onClick={() => onDayClick(day)}
-                            className={isWeekend ? 'calendar-weekend-cell' : undefined}
+                            className={[
+                                isWeekend ? 'calendar-weekend-cell' : '',
+                                isSelected ? 'calendar-selected-cell' : '',
+                            ].filter(Boolean).join(' ') || undefined}
                             style={{
                                 minHeight: '88px',
                                 padding: '0.375rem 0.5rem',
                                 cursor: 'pointer',
-                                background: isToday
+                                background: isSelected
+                                    ? 'var(--calendar-selected-bg)'
+                                    : isToday
                                     ? 'var(--primary-light)'
                                     : isWeekend
                                         ? 'var(--calendar-weekend-bg)'
@@ -82,11 +89,14 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, onDateChange, 
                             }}
                         >
                             <div
-                                className={isWeekend && !isToday ? 'calendar-weekend-day-number' : undefined}
+                                className={[
+                                    isWeekend && !isToday && !isSelected ? 'calendar-weekend-day-number' : '',
+                                    isSelected ? 'calendar-selected-day-number' : '',
+                                ].filter(Boolean).join(' ') || undefined}
                                 style={{
                                     fontSize: '12px',
-                                    fontWeight: isToday ? 700 : 400,
-                                    color: isToday ? 'var(--primary)' : 'var(--text-main)',
+                                    fontWeight: isToday || isSelected ? 700 : 400,
+                                    color: isSelected ? 'var(--primary)' : isToday ? 'var(--primary)' : 'var(--text-main)',
                                     marginBottom: '0.25rem',
                                     lineHeight: 1
                                 }}

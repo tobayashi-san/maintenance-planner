@@ -18,6 +18,7 @@
   --calendar-weekend-bg: #f8f4ea;
   --calendar-weekend-header-bg: #f3ead6;
   --calendar-weekend-text: #9a6700;
+  --calendar-selected-bg: #dbeafe;
 
   --text-main: #111827;
   --text-muted: #6b7280;
@@ -47,6 +48,7 @@
   --calendar-weekend-bg: #2b2416;
   --calendar-weekend-header-bg: #3a2f18;
   --calendar-weekend-text: #fbbf24;
+  --calendar-selected-bg: #172554;
 
   --text-main: #f1f5f9;
   --text-muted: #94a3b8;
@@ -591,6 +593,16 @@ tr:hover td {
 
 .calendar-weekend-day-number {
   color: var(--calendar-weekend-text) !important;
+}
+
+.calendar-selected-cell {
+  box-shadow: inset 0 0 0 2px var(--primary);
+  position: relative;
+  z-index: 1;
+}
+
+.calendar-selected-day-number {
+  color: var(--primary) !important;
 }
 
 .calendar-day-panel {
