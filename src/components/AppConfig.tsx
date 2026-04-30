@@ -10,7 +10,7 @@ const AppConfig: React.FC = () => {
 
     useEffect(() => {
         fetchAppSettings();
-    }, []);
+    }, [fetchAppSettings]);
 
     useEffect(() => {
         setSettings(appSettings);
@@ -49,7 +49,7 @@ const AppConfig: React.FC = () => {
                     placeholder="https://example.com"
                 />
                 <p className="text-muted" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
-                    Outlook braucht eine oeffentlich erreichbare URL. `localhost` oder `127.0.0.1` funktionieren nicht als Internetkalender.
+                    Intern im Netzwerk kannst du hier auch eine URL wie `http://10.0.9.120:3000` hinterlegen. Fuer neues Outlook und Outlook im Web ist eine oeffentliche HTTPS-Domain trotzdem deutlich zuverlassiger als private IPs oder reines `http://`.
                 </p>
             </div>
 
@@ -62,6 +62,7 @@ const AppConfig: React.FC = () => {
                     <div>Outlook-URL im Kalender</div>
                     <div>ICS-Abonnement fuer externe Kalender</div>
                     <div>Direktlinks in Erinnerungs-E-Mails</div>
+                    <div>Optional: Reverse-Proxy-Domain fuer HTTPS-Zugriff</div>
                 </div>
             </div>
 

@@ -41,20 +41,38 @@ const Calendar: React.FC = () => {
         return visibleTasks.filter((task) => new Date(task.date).toDateString() === selectedDate.toDateString());
     }, [selectedDate, visibleTasks]);
 
-    const resolveCalendarBaseUrl = () => {
+    const isPrivateIpv4Host = (host: string) => {
+        if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
+        const parts = host.split('.').map(Number);
+        if (parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) return false;
+        if (parts[0] === 10) return true;
+        if (parts[0] === 127) return true;
+        if (parts[0] === 192 && parts[1] === 168) return true;
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        return false;
+    };
+
+    const resolveCalendarBaseUrl = (): { baseUrl: string | null; error: string | null; isInternal: boolean } => {
         const configured = appSettings.publicAppUrl?.trim();
         const fallback = window.location.origin;
         const candidate = configured || fallback;
 
-        if (!candidate) return null;
+        if (!candidate) {
+            return { baseUrl: null, error: 'Bitte hinterlege unter Admin > App Links eine vollstaendige URL zur App.', isInternal: false };
+        }
 
         try {
             const url = new URL(candidate);
-            if (!['http:', 'https:'].includes(url.protocol)) return null;
-            if (['localhost', '127.0.0.1'].includes(url.hostname)) return null;
-            return url.toString().replace(/\/+$/, '');
+            const host = url.hostname.toLowerCase();
+            const isInternal = ['localhost', '127.0.0.1', '::1'].includes(host) || host.endsWith('.local') || isPrivateIpv4Host(host);
+
+            if (!['http:', 'https:'].includes(url.protocol)) {
+                return { baseUrl: null, error: 'Die hinterlegte APP_URL muss mit http:// oder https:// beginnen.', isInternal: false };
+            }
+
+            return { baseUrl: url.toString().replace(/\/+$/, ''), error: null, isInternal };
         } catch {
-            return null;
+            return { baseUrl: null, error: 'Die hinterlegte APP_URL ist ungueltig. Bitte verwende eine vollstaendige URL wie http://10.0.9.120:3000 oder https://calendar.example.com.', isInternal: false };
         }
     };
 
@@ -69,13 +87,15 @@ const Calendar: React.FC = () => {
             return;
         }
 
-        const baseUrl = resolveCalendarBaseUrl();
+        const { baseUrl, error, isInternal } = resolveCalendarBaseUrl();
         if (!baseUrl) {
-            showToast('Bitte hinterlege unter Admin > App Links eine vollstandige URL wie http://10.0.9.120:3000 oder https://deine-domain.ch.', 'error');
+            showToast(error || 'Bitte hinterlege eine gueltige Outlook-URL.', 'error');
             return;
         }
         const httpUrl = `${baseUrl}/api/calendar.ics?token=${user.calendarToken}`;
-        const outlookUrl = httpUrl.replace(/^https?:\/\//i, 'webcal://');
+        const outlookUrl = baseUrl.startsWith('https://')
+            ? httpUrl.replace(/^https:\/\//i, 'webcal://')
+            : httpUrl;
 
         try {
             if (navigator.clipboard) {
@@ -88,7 +108,10 @@ const Calendar: React.FC = () => {
                 document.execCommand('copy');
                 document.body.removeChild(el);
             }
-            showToast(`Outlook-URL kopiert: ${outlookUrl}`, 'success');
+            const message = isInternal
+                ? `Interne Kalender-URL kopiert: ${outlookUrl}. Funktioniert am ehesten mit Classic Outlook im selben Netzwerk.`
+                : `Outlook-URL kopiert: ${outlookUrl}`;
+            showToast(message, 'success');
         } catch {
             showToast(`Konnte Outlook-URL nicht kopieren: ${outlookUrl}`, 'error');
         }

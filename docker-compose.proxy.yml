@@ -1,0 +1,29 @@
+services:
+  wartungskalender:
+    ports: !reset []
+    expose:
+      - "3000"
+    environment:
+      APP_URL: https://${PUBLIC_HOSTNAME}
+      ALLOWED_ORIGIN: https://${PUBLIC_HOSTNAME}
+
+  caddy:
+    image: caddy:2
+    container_name: wartungskalender-proxy
+    depends_on:
+      - wartungskalender
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -101,6 +101,65 @@ EOF
 
 ## Docker
 
+### Internes Deployment im Netzwerk
+
+Wenn die App **nur intern im Netzwerk** laufen soll, reicht das normale `docker-compose.yml`.
+
+Beispiel fuer `.env`:
+
+```env
+JWT_SECRET=bitte-einen-langen-zufalligen-schluessel-verwenden
+APP_URL=http://10.0.9.120:3000
+ALLOWED_ORIGIN=http://10.0.9.120:3000
+INITIAL_ADMIN_NAME=Admin
+INITIAL_ADMIN_EMAIL=admin@example.com
+INITIAL_ADMIN_PASSWORD=use-a-long-random-password
+```
+
+Dann starten:
+
+```bash
+docker compose up -d --build
+```
+
+Die App ist danach intern unter `http://10.0.9.120:3000` erreichbar.
+
+Hinweis zu Outlook:
+
+- **Classic Outlook im selben LAN** kann mit internen `http://`- oder privaten IP-Links funktionieren.
+- **New Outlook** und **Outlook on the web / Microsoft 365** sind mit internen IPs und Internetkalendern oft unzuverlaessig oder koennen gar nicht darauf zugreifen.
+
+### Optionale HTTPS-Variante fuer Outlook / OWA
+
+Wenn du spaeter doch eine **oeffentliche HTTPS-Domain** willst, kannst du zusaetzlich die Proxy-Datei verwenden:
+
+```text
+https://calendar.example.com
+```
+
+Diese Zusatzkonfiguration nutzt **Caddy als Reverse Proxy** und holt automatisch TLS-Zertifikate, wenn:
+
+- `PUBLIC_HOSTNAME` auf eine oeffentliche Domain gesetzt ist
+- DNS auf deinen Server zeigt
+- Port `80` und `443` aus dem Internet erreichbar sind
+
+Zusatzwerte in `.env`:
+
+```env
+PUBLIC_HOSTNAME=calendar.example.com
+ACME_EMAIL=ops@example.com
+APP_URL=https://calendar.example.com
+ALLOWED_ORIGIN=https://calendar.example.com
+```
+
+Danach starten:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+```
+
+Die App ist dann ueber `https://calendar.example.com` erreichbar und kann daraus Outlook-kompatible `webcal://`-Links erzeugen.
+
 ### Docker Image bauen
 
 ```bash
@@ -123,7 +182,7 @@ docker run -p 3000:3000 \
 docker compose up --build
 ```
 
-Die Anwendung ist danach unter `http://localhost:3000` erreichbar.
+Die Anwendung ist danach standardmaessig direkt auf Port `3000` erreichbar.
 
 ### `docker-compose.yml` per Copy-Paste erzeugen
 
