@@ -1,8 +1,6 @@
 services:
   wartungskalender:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${WARTUNGSKALENDER_IMAGE:-ghcr.io/tobayashi-san/maintenance-planner:latest}
     container_name: wartungskalender
     environment:
       NODE_ENV: production

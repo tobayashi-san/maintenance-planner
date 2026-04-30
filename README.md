@@ -24,7 +24,8 @@ INITIAL_ADMIN_PASSWORD=use-a-long-random-password
 Start:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Danach ist die App unter `http://10.0.9.120:3000` erreichbar.
@@ -65,7 +66,8 @@ INITIAL_ADMIN_PASSWORD=use-a-long-random-password
 4. Starten:
 
 ```bash
-docker compose -f docker-compose.internal-tls.yml up -d --build
+docker compose -f docker-compose.internal-tls.yml pull
+docker compose -f docker-compose.internal-tls.yml up -d
 ```
 
 Danach laeuft die App unter:
@@ -126,7 +128,8 @@ ALLOWED_ORIGIN=https://calendar.example.com
 Start:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+docker compose pull
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
 ```
 
 ## Wichtige Dateien
@@ -135,6 +138,20 @@ docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
 - Uploads: `uploads/`
 - Internes HTTPS: `docker-compose.internal-tls.yml`
 - Oeffentliche HTTPS-Variante: `docker-compose.proxy.yml`
+
+## Docker-Image
+
+Standardmaessig wird dieses Image verwendet:
+
+```text
+ghcr.io/tobayashi-san/maintenance-planner:latest
+```
+
+Optional koennt ihr in `.env` ein anderes Tag setzen:
+
+```env
+WARTUNGSKALENDER_IMAGE=ghcr.io/tobayashi-san/maintenance-planner:latest
+```
 
 ## Wichtige Hinweise
 
