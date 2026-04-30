@@ -1214,11 +1214,35 @@ app.delete('/api/categories/:id', authenticateToken, requireAdmin, (req, res) =>
 
 // 8. Email
 app.post('/api/email/send', authenticateToken, async (req, res) => {
-    const { to, subject, body, icalEvent } = req.body;
+    const { to, subject, body, icalEvent, recipientUserIds } = req.body;
     const cfg = await getSmtpTransport();
     if (!cfg) return res.status(400).json({ error: 'SMTP settings not configured' });
+
+    const directRecipients = String(to || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    const requestedUserIds = Array.isArray(recipientUserIds)
+        ? recipientUserIds.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : [];
+    let resolvedRecipients = [];
+
+    if (requestedUserIds.length > 0) {
+        const placeholders = requestedUserIds.map(() => '?').join(', ');
+        const rows = await dbAllAsync(
+            `SELECT email FROM users WHERE id IN (${placeholders}) AND email IS NOT NULL AND email != ''`,
+            requestedUserIds
+        );
+        resolvedRecipients = rows.map((row) => String(row.email || '').trim()).filter(Boolean);
+    }
+
+    const recipients = [...new Set([...directRecipients, ...resolvedRecipients])];
+    if (recipients.length === 0) {
+        return res.status(400).json({ error: 'No valid recipient email addresses found' });
+    }
+
     cfg.transporter.sendMail({
-        from: cfg.from, to, subject, text: body,
+        from: cfg.from, to: recipients.join(', '), subject, text: body,
         html: req.body.html || undefined,
         icalEvent: icalEvent ? { content: icalEvent, method: 'request' } : undefined
     }, (error, info) => {

@@ -87,7 +87,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
                     `New Task Assigned: ${taskToSave.title}`,
                     `You have been assigned: ${taskToSave.title}`,
                     getTaskAssignmentEmailHtml(taskToSave.title, taskToSave.date, taskToSave.description),
-                    icsContent);
+                    icsContent,
+                    taskToSave.assigneeIds);
                 showToast(`Email sent to ${assignees.length} assignee(s).`, 'success');
             } catch {
                 showToast('Failed to send email notification.', 'error');
