@@ -30,8 +30,8 @@ services:
       - /bin/sh
       - -ec
       - |
-        cat >/etc/caddy/Caddyfile <<'EOF'
-        {$INTERNAL_TLS_HOSTNAME} {
+        cat >/etc/caddy/Caddyfile <<EOF
+        ${INTERNAL_TLS_HOSTNAME} {
             encode gzip zstd
             tls internal
 
@@ -43,10 +43,7 @@ services:
                 file_server
             }
 
-            reverse_proxy wartungskalender:3000 {
-                header_up X-Forwarded-Host {host}
-                header_up X-Forwarded-Proto {scheme}
-            }
+            reverse_proxy wartungskalender:3000
         }
         EOF
         exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

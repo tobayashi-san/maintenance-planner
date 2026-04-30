@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, Download, LogOut, Calendar, LayoutDashboard, Settings, Sun, Moon } from 'lucide-react';
+import { Bell, Download, LogOut, Calendar, LayoutDashboard, Settings, Sun, Moon, ExternalLink, MessageSquareWarning } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useNotification } from '../context/NotificationContext';
 
@@ -76,6 +76,24 @@ const Layout: React.FC = () => {
                         </Link>
                     )}
                 </nav>
+                <div className="sidebar-footer">
+                    <a
+                        href="https://github.com/tobayashi-san/maintenance-planner/issues/new"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="sidebar-footer-link"
+                    >
+                        <MessageSquareWarning size={16} /> GitHub Issue
+                    </a>
+                    <a
+                        href="https://github.com/tobayashi-san/maintenance-planner"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="sidebar-footer-link"
+                    >
+                        <ExternalLink size={16} /> Repository
+                    </a>
+                </div>
             </aside>
             <div className="main-content">
                 <header className="top-header">
