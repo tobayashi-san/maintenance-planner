@@ -32,7 +32,17 @@ if (!SECRET_KEY || SECRET_KEY === 'secure-random-secret-key-12345' || SECRET_KEY
 
 const app = express();
 
-app.use(helmet());
+const appUrl = (process.env.APP_URL || '').trim();
+const isHttpsDeployment = appUrl.startsWith('https://');
+
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            upgradeInsecureRequests: isHttpsDeployment ? [] : null,
+        },
+    },
+    strictTransportSecurity: isHttpsDeployment,
+}));
 app.use(cors({
     origin: process.env.ALLOWED_ORIGIN || (process.env.NODE_ENV === 'production' ? false : 'http://localhost:5173'),
     credentials: true,
