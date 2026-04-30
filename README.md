@@ -93,8 +93,31 @@ services:
       - "443:443"
     environment:
       INTERNAL_TLS_HOSTNAME: ${INTERNAL_TLS_HOSTNAME}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cat >/etc/caddy/Caddyfile <<'EOF'
+        {$INTERNAL_TLS_HOSTNAME} {
+            encode gzip zstd
+            tls internal
+
+            handle /downloads/internal-root-ca.crt {
+                root * /data/caddy/pki/authorities/local
+                rewrite * /root.crt
+                header Content-Type application/x-x509-ca-cert
+                header Content-Disposition "attachment; filename=\"wartungskalender-root-ca.crt\""
+                file_server
+            }
+
+            reverse_proxy wartungskalender:3000 {
+                header_up X-Forwarded-Host {host}
+                header_up X-Forwarded-Proto {scheme}
+            }
+        }
+        EOF
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     volumes:
-      - ./Caddyfile.internal-tls:/etc/caddy/Caddyfile:ro
       - ./caddy_internal_data:/data
       - ./caddy_internal_config:/config
     restart: unless-stopped
@@ -163,6 +186,10 @@ Danach sollten funktionieren:
 - HTTPS ohne Warnung
 - PWA-Installation
 - Browser-Benachrichtigungen
+
+Wichtig:
+- Es ist **keine** separate `Caddyfile.internal-tls` auf dem Server noetig.
+- Die Caddy-Konfiguration steckt bereits komplett in `docker-compose.internal-tls.yml`.
 
 ## Outlook / ICS
 
