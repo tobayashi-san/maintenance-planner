@@ -19,7 +19,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
     const { user, users, smtpSettings, fetchAttachments, uploadAttachment, deleteAttachment } = useStore();
     const { showToast } = useNotification();
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const canManageAssignees = user?.role === 'admin';
     const canManageAttachments = user?.role === 'admin';
 
     const [formData, setFormData] = useState<Task>({
@@ -80,7 +79,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
             return;
         }
 
-        if (user?.role === 'admin' && !initialData && taskToSave.assigneeIds.length > 0) {
+        if (!initialData && taskToSave.assigneeIds.length > 0) {
             const assignees = users.filter(u => taskToSave.assigneeIds.includes(u.id));
             try {
                 const icsContent = generateIcsContent(taskToSave);
@@ -183,10 +182,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
                     <div>
                         {label('Assignees')}
                         <div className="task-modal-assignees">
-                            {(canManageAssignees ? users : users.filter((entry) => entry.id === user?.id)).map(u => {
+                            {users.map(u => {
                                 const selected = formData.assigneeIds.includes(u.id);
                                 return (
-                                    <button key={u.id} type="button" onClick={() => canManageAssignees && toggleAssignee(u.id)}
+                                    <button key={u.id} type="button" onClick={() => toggleAssignee(u.id)}
                                         className={`task-modal-assignee ${selected ? 'selected' : ''}`}>
                                         {u.name}
                                     </button>

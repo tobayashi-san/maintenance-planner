@@ -880,8 +880,8 @@ app.post('/api/tasks', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'recurrenceInterval must be a positive integer' });
     }
     const createdBy = req.user.role === 'admin' && t.createdBy ? t.createdBy : req.user.id;
-    const assigneeIds = req.user.role === 'admin'
-        ? (Array.isArray(t.assigneeIds) ? t.assigneeIds : [])
+    const assigneeIds = Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0
+        ? t.assigneeIds
         : [req.user.id];
     db.run(`INSERT INTO tasks (id, title, date, description, status, recurrence, recurrenceInterval, recurrenceEndDate, assigneeIds, reminderDays, categoryId, completionNote, createdBy)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -906,8 +906,8 @@ app.put('/api/tasks/:id', authenticateToken, (req, res) => {
             return res.status(403).json({ error: 'Not allowed to edit this task' });
         }
 
-        const assigneeIds = req.user.role === 'admin'
-            ? (Array.isArray(t.assigneeIds) ? t.assigneeIds : [])
+        const assigneeIds = Array.isArray(t.assigneeIds) && t.assigneeIds.length > 0
+            ? t.assigneeIds
             : parseAssigneeIds(task.assigneeIds || '[]');
         const createdBy = task.createdBy || req.user.id;
 
