@@ -12,7 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import fs from 'fs';
-import { addDays, addWeeks, addMonths, addYears, subYears } from 'date-fns';
+import { addDays, addWeeks, addMonths, addYears, differenceInCalendarDays, startOfDay, startOfWeek, subYears } from 'date-fns';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,6 +118,27 @@ const getPublicAppUrl = async () => {
     return savedUrl || process.env.APP_URL || null;
 };
 
+const dbGetAsync = (sql, params = []) => new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+    });
+});
+
+const dbAllAsync = (sql, params = []) => new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+    });
+});
+
+const dbRunAsync = (sql, params = []) => new Promise((resolve, reject) => {
+    db.run(sql, params, function onRun(err) {
+        if (err) reject(err);
+        else resolve({ changes: this.changes, lastID: this.lastID });
+    });
+});
+
 const getBaseEmailHtml = (content) => `
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -138,21 +159,59 @@ body{font-family:'Segoe UI',sans-serif;line-height:1.6;color:#333;margin:0;paddi
 <div class="footer"><p>&copy; ${new Date().getFullYear()} Wartungskalender</p></div>
 </div></body></html>`;
 
-const getReminderEmailHtml = (task, appUrl) => getBaseEmailHtml(`
-<h2 style="color:#111827;margin-top:0">Task Due Soon</h2>
-<p>This task is due in <strong>${task.reminderDays} day(s)</strong>.</p>
+const escapeHtml = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const getReminderEmailHtml = (task, headline, intro, actions = []) => getBaseEmailHtml(`
+<h2 style="color:#111827;margin-top:0">${escapeHtml(headline)}</h2>
+<p>${escapeHtml(intro)}</p>
 <div class="task-card">
-<div class="label">Task</div><div class="value">${task.title}</div>
-<div class="label">Due Date</div><div class="value">${new Date(task.date).toLocaleDateString()}</div>
-<div class="label">Description</div><div class="value" style="white-space:pre-wrap">${task.description || 'No description.'}</div>
+<div class="label">Task</div><div class="value">${escapeHtml(task.title)}</div>
+<div class="label">Due Date</div><div class="value">${escapeHtml(new Date(task.date).toLocaleDateString('de-CH'))}</div>
+<div class="label">Description</div><div class="value" style="white-space:pre-wrap">${escapeHtml(task.description || 'Keine Beschreibung.')}</div>
 </div>
-<div style="text-align:center">${appUrl ? `<a href="${appUrl}" class="button">View Dashboard</a>` : ''}</div>`);
+<div style="text-align:center">${actions.map((action) => `<a href="${action.href}" class="button" style="${action.variant === 'secondary' ? 'background:#0f172a;margin-left:8px;' : ''}">${escapeHtml(action.label)}</a>`).join('')}</div>`);
+
+const getWeeklyDigestEmailHtml = (userName, sections, appUrl) => getBaseEmailHtml(`
+<h2 style="color:#111827;margin-top:0">Deine Wartungswoche</h2>
+<p>Hallo ${escapeHtml(userName || 'Team')}, hier ist deine personliche Wochenubersicht.</p>
+${sections.map((section) => `
+    <div style="margin-bottom:24px">
+        <div class="label" style="margin-bottom:8px">${escapeHtml(section.title)}</div>
+        ${section.items.map((item) => `
+            <div class="task-card" style="margin:12px 0">
+                <div class="value" style="margin-bottom:8px">${escapeHtml(item.title)}</div>
+                <div style="font-size:14px;color:#475569;margin-bottom:10px">
+                    Fallig am ${escapeHtml(new Date(item.date).toLocaleDateString('de-CH'))}${item.description ? ` - ${escapeHtml(item.description)}` : ''}
+                </div>
+                <div>
+                    ${item.openHref ? `<a href="${item.openHref}" class="button">Aufgabe offnen</a>` : ''}
+                    ${item.completeHref ? `<a href="${item.completeHref}" class="button" style="background:#0f172a;margin-left:8px;">Direkt erledigen</a>` : ''}
+                </div>
+            </div>
+        `).join('')}
+    </div>
+`).join('')}
+<div style="text-align:center">${appUrl ? `<a href="${appUrl}/dashboard" class="button">Portal offnen</a>` : ''}</div>`);
 
 // --- Constants ---
 const PORT = process.env.PORT || 3000;
 
 // --- Helpers ---
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const normalizeAppUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
+const parseAssigneeIds = (value) => {
+    try {
+        const parsed = JSON.parse(value || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
 const normalizeOccurrenceDate = (value) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
@@ -182,6 +241,49 @@ const getDateWithOffset = (date, amount, recurrence) => {
         default:
             return date;
     }
+};
+const getReminderStageOffsets = (leadDays) => {
+    const maxLead = Number(leadDays) || 0;
+    const stages = new Set();
+    if (maxLead > 0) stages.add(maxLead);
+    [30, 7, 1].forEach((candidate) => {
+        if (maxLead >= candidate) stages.add(candidate);
+    });
+    stages.add(0);
+    stages.add(-1);
+    return [...stages].sort((a, b) => b - a);
+};
+const getReminderStageLabel = (daysUntil) => {
+    if (daysUntil > 1) return `in ${daysUntil} Tagen fallig`;
+    if (daysUntil === 1) return 'morgen fallig';
+    if (daysUntil === 0) return 'heute fallig';
+    return 'seit gestern uberfallig';
+};
+const getReminderSubject = (task, daysUntil) => {
+    if (daysUntil > 1) return `Erinnerung: ${task.title} ist in ${daysUntil} Tagen fallig`;
+    if (daysUntil === 1) return `Erinnerung: ${task.title} ist morgen fallig`;
+    if (daysUntil === 0) return `Heute fallig: ${task.title}`;
+    return `Uberfallig: ${task.title}`;
+};
+const buildTaskPath = (task) => {
+    const params = new URLSearchParams({ taskId: task.originalTaskId || task.id });
+    if (task.occurrenceDate) params.set('occurrenceDate', task.occurrenceDate);
+    return `/dashboard?${params.toString()}`;
+};
+const buildAbsoluteAppUrl = (appUrl, pathWithQuery) => {
+    const base = normalizeAppUrl(appUrl);
+    return base ? `${base}${pathWithQuery}` : null;
+};
+const buildEmailOpenLink = (appUrl, task) => buildAbsoluteAppUrl(appUrl, buildTaskPath(task));
+const buildEmailActionToken = (payload) => jwt.sign(payload, SECRET_KEY, { expiresIn: '14d' });
+const buildEmailCompleteLink = (task, userId) => {
+    const token = buildEmailActionToken({
+        action: 'complete',
+        userId,
+        taskId: task.originalTaskId || task.id,
+        occurrenceDate: task.occurrenceDate || task.date,
+    });
+    return `/api/email/action?token=${encodeURIComponent(token)}`;
 };
 const expandTasksForCalendar = (tasks, overrides, start, end) => {
     const instances = [];
@@ -253,6 +355,99 @@ const expandTasksForCalendar = (tasks, overrides, start, end) => {
 
     return instances.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
+const loadExpandedTaskInstances = async (start, end) => {
+    const taskRows = await dbAllAsync("SELECT * FROM tasks");
+    const overrideRows = await dbAllAsync("SELECT * FROM task_occurrence_overrides");
+    const tasks = taskRows.map((task) => ({ ...task, assigneeIds: parseAssigneeIds(task.assigneeIds) }));
+    const overrides = overrideRows.map((row) => ({ ...row, skipped: Boolean(row.skipped) }));
+    return expandTasksForCalendar(tasks, overrides, start, end).filter((task) => task.status !== 'completed' && task.status !== 'canceled');
+};
+const createOrUpdateOccurrenceOverride = async (taskId, occurrenceDate, payload) => {
+    const normalizedOccurrenceDate = normalizeOccurrenceDate(occurrenceDate);
+    if (!normalizedOccurrenceDate) throw new Error('Invalid occurrenceDate');
+
+    const existing = await dbGetAsync(
+        "SELECT id FROM task_occurrence_overrides WHERE taskId = ? AND occurrenceDate = ?",
+        [taskId, normalizedOccurrenceDate]
+    );
+
+    const id = existing?.id || crypto.randomUUID();
+    await dbRunAsync(
+        `INSERT INTO task_occurrence_overrides (id, taskId, occurrenceDate, date, status, completionNote, skipped, updatedBy, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(taskId, occurrenceDate) DO UPDATE SET
+            date = excluded.date,
+            status = excluded.status,
+            completionNote = excluded.completionNote,
+            skipped = excluded.skipped,
+            updatedBy = excluded.updatedBy,
+            updatedAt = excluded.updatedAt`,
+        [
+            id,
+            taskId,
+            normalizedOccurrenceDate,
+            payload.date || null,
+            payload.status || 'pending',
+            payload.completionNote || null,
+            payload.skipped ? 1 : 0,
+            payload.updatedBy || null,
+            payload.updatedAt || new Date().toISOString(),
+        ]
+    );
+};
+const reserveDispatch = async ({ kind, userId, taskId = '', occurrenceDate = '', dispatchKey }) => {
+    const result = await dbRunAsync(
+        `INSERT OR IGNORE INTO notification_dispatches (id, kind, userId, taskId, occurrenceDate, dispatchKey, sentAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [crypto.randomUUID(), kind, userId, taskId, occurrenceDate, dispatchKey, new Date().toISOString()]
+    );
+    return result.changes > 0;
+};
+const buildReminderActions = (appUrl, task, userId) => {
+    const openHref = buildEmailOpenLink(appUrl, task);
+    const completePath = buildEmailCompleteLink(task, userId);
+    return [
+        openHref ? { href: openHref, label: 'Aufgabe offnen' } : null,
+        appUrl ? { href: buildAbsoluteAppUrl(appUrl, completePath), label: 'Direkt erledigen', variant: 'secondary' } : null,
+    ].filter(Boolean);
+};
+const sendReminderEmail = async (cfg, appUrl, user, task, daysUntil) => {
+    const intro = `Die Aufgabe "${task.title}" ist ${getReminderStageLabel(daysUntil)}.`;
+    const html = getReminderEmailHtml(task, getReminderSubject(task, daysUntil), intro, buildReminderActions(appUrl, task, user.id));
+    await cfg.transporter.sendMail({
+        from: cfg.from,
+        to: user.email,
+        subject: getReminderSubject(task, daysUntil),
+        html,
+        text: `${task.title} - fallig am ${new Date(task.date).toLocaleDateString('de-CH')}.`,
+    });
+};
+const sendWeeklyDigestEmail = async (cfg, appUrl, user, upcomingTasks, overdueTasks) => {
+    const toDigestItem = (task) => ({
+        title: task.title,
+        date: task.date,
+        description: task.description || '',
+        openHref: buildEmailOpenLink(appUrl, task),
+        completeHref: appUrl ? buildAbsoluteAppUrl(appUrl, buildEmailCompleteLink(task, user.id)) : null,
+    });
+
+    const sections = [];
+    if (overdueTasks.length > 0) {
+        sections.push({ title: 'Uberfallig', items: overdueTasks.map(toDigestItem) });
+    }
+    if (upcomingTasks.length > 0) {
+        sections.push({ title: 'Diese Woche fallig', items: upcomingTasks.map(toDigestItem) });
+    }
+    if (sections.length === 0) return;
+
+    await cfg.transporter.sendMail({
+        from: cfg.from,
+        to: user.email,
+        subject: 'Deine Wartungswoche',
+        html: getWeeklyDigestEmailHtml(user.name, sections, normalizeAppUrl(appUrl)),
+        text: `Uberfallig: ${overdueTasks.length}, diese Woche fallig: ${upcomingTasks.length}`,
+    });
+};
 
 // --- Middleware ---
 const authenticateToken = (req, res, next) => {
@@ -288,33 +483,48 @@ const requireAdmin = (req, res, next) => {
 const canManageTaskOccurrence = (task, user) => {
     if (!task || !user) return false;
     if (user.role === 'admin') return true;
-    try {
-        const assigneeIds = JSON.parse(task.assigneeIds || '[]');
-        return assigneeIds.includes(user.id);
-    } catch {
-        return false;
-    }
+    const assigneeIds = Array.isArray(task.assigneeIds) ? task.assigneeIds : parseAssigneeIds(task.assigneeIds);
+    return assigneeIds.includes(user.id);
 };
 const canManageTask = (task, user) => {
     if (!task || !user) return false;
     if (user.role === 'admin') return true;
-    try {
-        const assigneeIds = JSON.parse(task.assigneeIds || '[]');
-        return assigneeIds.includes(user.id);
-    } catch {
-        return false;
-    }
+    const assigneeIds = Array.isArray(task.assigneeIds) ? task.assigneeIds : parseAssigneeIds(task.assigneeIds);
+    return assigneeIds.includes(user.id);
 };
+const canAccessAttachment = (user) => user?.role === 'admin';
 
 // --- Initialization ---
 const createDefaultAdmin = () => {
     db.get("SELECT count(*) as count FROM users", async (err, row) => {
         if (!err && row.count === 0) {
+            const isProduction = process.env.NODE_ENV === 'production';
+            const adminEmail = (process.env.INITIAL_ADMIN_EMAIL || '').trim();
+            const adminPassword = process.env.INITIAL_ADMIN_PASSWORD || '';
+            const adminName = (process.env.INITIAL_ADMIN_NAME || 'Admin').trim() || 'Admin';
+
+            if (isProduction) {
+                if (!isValidEmail(adminEmail) || adminPassword.length < 12) {
+                    console.error('FATAL: No users exist and production bootstrap admin credentials are missing or too weak. Set INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD (min. 12 chars).');
+                    process.exit(1);
+                }
+            }
+
+            const email = isProduction ? adminEmail : 'admin@admin.com';
+            const plainPassword = isProduction ? adminPassword : 'admin';
             const id = crypto.randomUUID();
-            const password = await bcrypt.hash('admin', 10);
+            const password = await bcrypt.hash(plainPassword, 10);
             db.run("INSERT INTO users (id, name, email, password, role) VALUES (?, ?, ?, ?, ?)",
-                [id, 'Admin', 'admin@admin.com', password, 'admin'],
-                (err) => { if (!err) console.log('Default admin created: admin@admin.com / admin'); }
+                [id, adminName, email, password, 'admin'],
+                (insertErr) => {
+                    if (!insertErr) {
+                        if (isProduction) {
+                            console.log(`Initial admin created from environment: ${email}`);
+                        } else {
+                            console.log('Default admin created for development: admin@admin.com / admin');
+                        }
+                    }
+                }
             );
         }
     });
@@ -345,6 +555,16 @@ const migrateDb = () => {
         size INTEGER,
         uploadedAt TEXT
     )`);
+    db.run(`CREATE TABLE IF NOT EXISTS notification_dispatches (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        taskId TEXT NOT NULL DEFAULT '',
+        occurrenceDate TEXT NOT NULL DEFAULT '',
+        dispatchKey TEXT NOT NULL,
+        sentAt TEXT NOT NULL,
+        UNIQUE(kind, userId, taskId, occurrenceDate, dispatchKey)
+    )`);
     db.run("ALTER TABLE users ADD COLUMN calendarToken TEXT", () => {
         db.all("SELECT id FROM users WHERE calendarToken IS NULL", [], (err, rows) => {
             if (!err && rows) {
@@ -361,43 +581,101 @@ createDefaultAdmin();
 migrateDb();
 
 // --- Background Jobs ---
-const checkReminders = async () => {
-    const now = new Date();
-    db.all("SELECT * FROM tasks WHERE reminderDays > 0 AND status != 'completed'", async (err, tasks) => {
-        if (err || !tasks) return;
-        for (const task of tasks) {
-            const dueDate = new Date(task.date);
-            const reminderDate = new Date(dueDate);
-            reminderDate.setDate(dueDate.getDate() - task.reminderDays);
-            const sameDay = reminderDate.toDateString() === now.toDateString();
-            const alreadySentToday = task.lastReminderSent && new Date(task.lastReminderSent).toDateString() === now.toDateString();
-            if (sameDay && !alreadySentToday) {
-                const assignees = JSON.parse(task.assigneeIds || '[]');
-                if (assignees.length > 0) {
-                    const cfg = await getSmtpTransport();
-                    const appUrl = await getPublicAppUrl();
-                    if (cfg) {
-                        const emails = await Promise.all(assignees.map(uid => new Promise(resolve => {
-                            db.get("SELECT email FROM users WHERE id = ?", [uid], (e, r) => resolve(r ? r.email : null));
-                        })));
-                        const validEmails = emails.filter(e => e);
-                        if (validEmails.length > 0) {
-                            cfg.transporter.sendMail({
-                                from: cfg.from, to: validEmails.join(', '),
-                                subject: `Reminder: ${task.title} is due in ${task.reminderDays} day(s)`,
-                                html: getReminderEmailHtml(task, appUrl)
-                            }, (error) => {
-                                if (!error) db.run("UPDATE tasks SET lastReminderSent = ? WHERE id = ?", [now.toISOString(), task.id]);
-                            });
-                        }
-                    }
+const sendReminderNotifications = async (now) => {
+    const cfg = await getSmtpTransport();
+    if (!cfg) return;
+
+    const appUrl = normalizeAppUrl(await getPublicAppUrl());
+    const taskRows = await dbAllAsync("SELECT MAX(COALESCE(reminderDays, 0)) as maxReminder FROM tasks");
+    const maxReminderDays = Number(taskRows?.[0]?.maxReminder || 0);
+    const rangeStart = addDays(startOfDay(now), -2);
+    const rangeEnd = addDays(startOfDay(now), Math.max(maxReminderDays, 30) + 2);
+    const taskInstances = await loadExpandedTaskInstances(rangeStart, rangeEnd);
+
+    for (const task of taskInstances) {
+        if (!task.assigneeIds?.length) continue;
+
+        const daysUntil = differenceInCalendarDays(startOfDay(new Date(task.date)), startOfDay(now));
+        const stages = getReminderStageOffsets(task.reminderDays);
+        if (!stages.includes(daysUntil)) continue;
+
+        const assigneeRows = await dbAllAsync(
+            `SELECT id, name, email, role FROM users WHERE id IN (${task.assigneeIds.map(() => '?').join(',')})`,
+            task.assigneeIds
+        );
+
+        for (const user of assigneeRows.filter((entry) => entry.email)) {
+            const dispatchKey = `stage:${daysUntil}`;
+            const reserved = await reserveDispatch({
+                kind: 'task-reminder',
+                userId: user.id,
+                taskId: task.originalTaskId || task.id,
+                occurrenceDate: task.occurrenceDate || task.date,
+                dispatchKey,
+            });
+
+            if (!reserved) continue;
+
+            try {
+                await sendReminderEmail(cfg, appUrl, user, task, daysUntil);
+                if (!task.isRecurringInstance) {
+                    await dbRunAsync("UPDATE tasks SET lastReminderSent = ? WHERE id = ?", [now.toISOString(), task.originalTaskId || task.id]);
                 }
+            } catch (error) {
+                console.error('Failed to send reminder email', error);
             }
         }
-    });
+    }
 };
-setInterval(checkReminders, 60 * 60 * 1000);
-setTimeout(checkReminders, 5000);
+
+const sendWeeklyDigests = async (now) => {
+    if (now.getDay() !== 1) return;
+
+    const cfg = await getSmtpTransport();
+    if (!cfg) return;
+
+    const appUrl = normalizeAppUrl(await getPublicAppUrl());
+    const users = await dbAllAsync("SELECT id, name, email, role FROM users WHERE email IS NOT NULL AND email != ''");
+    const start = startOfDay(now);
+    const end = addDays(start, 7);
+    const allTasks = await loadExpandedTaskInstances(subYears(start, 5), end);
+    const weekKey = startOfWeek(now, { weekStartsOn: 1 }).toISOString().slice(0, 10);
+
+    for (const user of users) {
+        const userTasks = allTasks.filter((task) => task.assigneeIds?.includes(user.id));
+        const overdueTasks = userTasks.filter((task) => differenceInCalendarDays(startOfDay(new Date(task.date)), start) < 0);
+        const upcomingTasks = userTasks.filter((task) => {
+            const daysUntil = differenceInCalendarDays(startOfDay(new Date(task.date)), start);
+            return daysUntil >= 0 && daysUntil <= 7;
+        });
+        if (overdueTasks.length === 0 && upcomingTasks.length === 0) continue;
+
+        const reserved = await reserveDispatch({
+            kind: 'weekly-digest',
+            userId: user.id,
+            dispatchKey: weekKey,
+        });
+        if (!reserved) continue;
+
+        try {
+            await sendWeeklyDigestEmail(cfg, appUrl, user, upcomingTasks, overdueTasks);
+        } catch (error) {
+            console.error('Failed to send weekly digest', error);
+        }
+    }
+};
+
+const runNotificationJobs = async () => {
+    try {
+        const now = new Date();
+        await sendReminderNotifications(now);
+        await sendWeeklyDigests(now);
+    } catch (error) {
+        console.error('Notification job failed', error);
+    }
+};
+setInterval(runNotificationJobs, 60 * 60 * 1000);
+setTimeout(runNotificationJobs, 5000);
 
 // --- Rate Limiters ---
 const loginLimiter = rateLimit({
@@ -479,7 +757,8 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 app.get('/api/users', authenticateToken, (req, res) => {
     db.all("SELECT id, name, email, role FROM users", [], (err, rows) => {
         if (err) res.status(500).json({ error: err.message });
-        else res.json(rows);
+        else if (req.user?.role === 'admin') res.json(rows);
+        else res.json((rows || []).map(({ id, name, role }) => ({ id, name, email: '', role })));
     });
 });
 
@@ -606,6 +885,9 @@ app.delete('/api/tasks/:id', authenticateToken, requireAdmin, (req, res) => {
 
 // 4. Attachments
 app.get('/api/tasks/:id/attachments', authenticateToken, (req, res) => {
+    if (!canAccessAttachment(req.user)) {
+        return res.status(403).json({ error: 'Not allowed to access attachments' });
+    }
     db.all("SELECT * FROM task_attachments WHERE taskId = ?", [req.params.id], (err, rows) => {
         if (err) res.status(500).json({ error: err.message });
         else res.json(rows || []);
@@ -638,6 +920,9 @@ app.delete('/api/attachments/:id', authenticateToken, requireAdmin, (req, res) =
 });
 
 app.get('/api/uploads/:filename', authenticateDownload, (req, res) => {
+    if (!canAccessAttachment(req.user)) {
+        return res.status(403).json({ error: 'Not allowed to download attachments' });
+    }
     const filename = req.params.filename;
     // Prevent path traversal: resolve and ensure file is within uploadsDir
     const filePath = path.resolve(uploadsDir, filename);
@@ -847,6 +1132,59 @@ app.post('/api/email/send', authenticateToken, requireAdmin, async (req, res) =>
         if (error) return res.status(500).json({ error: error.message });
         res.json({ message: 'Email sent', messageId: info.messageId });
     });
+});
+
+app.get('/api/email/action', async (req, res) => {
+    try {
+        const token = String(req.query.token || '');
+        if (!token) return res.status(400).send('Missing token');
+
+        const payload = jwt.verify(token, SECRET_KEY);
+        if (payload.action !== 'complete' || !payload.userId || !payload.taskId || !payload.occurrenceDate) {
+            return res.status(400).send('Invalid token payload');
+        }
+
+        const appUrl = normalizeAppUrl(await getPublicAppUrl());
+        if (!appUrl) return res.status(400).send('APP_URL is not configured');
+
+        const user = await dbGetAsync("SELECT id, role FROM users WHERE id = ?", [payload.userId]);
+        const task = await dbGetAsync("SELECT * FROM tasks WHERE id = ?", [payload.taskId]);
+        if (!user || !task) return res.status(404).send('Task or user not found');
+
+        const normalizedTask = { ...task, assigneeIds: parseAssigneeIds(task.assigneeIds) };
+        if (!canManageTaskOccurrence(normalizedTask, user)) {
+            return res.status(403).send('Not allowed');
+        }
+
+        const occurrenceDate = normalizeOccurrenceDate(payload.occurrenceDate);
+        const existingOverride = occurrenceDate
+            ? await dbGetAsync("SELECT * FROM task_occurrence_overrides WHERE taskId = ? AND occurrenceDate = ?", [task.id, occurrenceDate])
+            : null;
+        const targetDate = existingOverride?.date || occurrenceDate || task.date;
+        const completionNote = 'Per E-Mail als erledigt markiert';
+
+        if (task.recurrence && task.recurrence !== 'none') {
+            await createOrUpdateOccurrenceOverride(task.id, occurrenceDate, {
+                date: targetDate,
+                status: 'completed',
+                completionNote,
+                skipped: false,
+                updatedBy: user.id,
+                updatedAt: new Date().toISOString(),
+            });
+        } else {
+            await dbRunAsync(
+                "UPDATE tasks SET status = ?, completionNote = ? WHERE id = ?",
+                ['completed', completionNote, task.id]
+            );
+        }
+
+        const redirectPath = `${buildTaskPath({ originalTaskId: task.id, occurrenceDate })}&emailAction=completed`;
+        res.redirect(buildAbsoluteAppUrl(appUrl, redirectPath));
+    } catch (error) {
+        console.error('Email action failed', error);
+        res.status(400).send('Invalid or expired action link');
+    }
 });
 
 // 9. ICS Subscription (calendarToken via query param for Outlook compatibility)

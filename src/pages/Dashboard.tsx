@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDays, isAfter, isBefore, isToday, parseISO, startOfDay, subYears } from 'date-fns';
 import { BellRing, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useNotification } from '../context/NotificationContext';
 import { useStore } from '../store/useStore';
 import { getTasksForRange, type TaskInstance } from '../utils/recurrence';
@@ -8,16 +9,22 @@ import { getTasksForRange, type TaskInstance } from '../utils/recurrence';
 const Dashboard: React.FC = () => {
     const { user, tasks, categories, occurrenceOverrides, users, saveOccurrenceOverride, updateTaskStatus } = useStore();
     const { showToast } = useNotification();
-    const [selectedTask, setSelectedTask] = useState<TaskInstance | null>(null);
+    const location = useLocation();
+    const navigate = useNavigate();
+    const [manualSelectedTask, setManualSelectedTask] = useState<TaskInstance | null>(null);
 
-    const allVisibleTasks = useMemo(() => {
+    const allTaskInstances = useMemo(() => {
         const now = startOfDay(new Date());
         const rangeStart = subYears(now, 5);
         const rangeEnd = addDays(now, 30);
-        return getTasksForRange(tasks, occurrenceOverrides, rangeStart, rangeEnd).filter(
+        return getTasksForRange(tasks, occurrenceOverrides, rangeStart, rangeEnd);
+    }, [tasks, occurrenceOverrides]);
+
+    const allVisibleTasks = useMemo(() => {
+        return allTaskInstances.filter(
             (task) => task.status !== 'completed' && task.status !== 'canceled'
         );
-    }, [tasks, occurrenceOverrides]);
+    }, [allTaskInstances]);
 
     const stats = useMemo(() => {
         const now = startOfDay(new Date());
@@ -55,9 +62,44 @@ const Dashboard: React.FC = () => {
         });
     }, [reminderTasks, showToast]);
 
+    const deepLinkedTask = useMemo(() => {
+        const params = new URLSearchParams(location.search);
+        const taskId = params.get('taskId');
+        if (!taskId) return null;
+
+        const occurrenceDate = params.get('occurrenceDate');
+        return allTaskInstances.find((task) => {
+            if (task.originalTaskId !== taskId) return false;
+            if (!occurrenceDate) return true;
+            return task.occurrenceDate === occurrenceDate;
+        }) || null;
+    }, [allTaskInstances, location.search]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        if (params.get('emailAction') === 'completed') {
+            showToast('Aufgabe wurde direkt aus der E-Mail als erledigt markiert.', 'success');
+            params.delete('emailAction');
+            navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' }, { replace: true });
+        }
+    }, [location.pathname, location.search, navigate, showToast]);
+
+    const selectedTask = manualSelectedTask || deepLinkedTask;
+
     const getCategoryName = (categoryId?: string) => categories.find((category) => category.id === categoryId)?.name || null;
     const getAssigneeNames = (assigneeIds: string[]) =>
         assigneeIds.map((id) => users.find((userEntry) => userEntry.id === id)?.name).filter(Boolean).join(', ');
+
+    const clearSelectedTask = () => {
+        setManualSelectedTask(null);
+        const params = new URLSearchParams(location.search);
+        if (params.has('taskId') || params.has('occurrenceDate')) {
+            params.delete('taskId');
+            params.delete('occurrenceDate');
+            params.delete('emailAction');
+            navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' }, { replace: true });
+        }
+    };
 
     const handleMarkDone = async (task: TaskInstance) => {
         const completionNote = window.prompt('Abschlussnotiz fur diese Aufgabe (optional):', task.completionNote || '') || '';
@@ -76,7 +118,7 @@ const Dashboard: React.FC = () => {
                 await updateTaskStatus(task.id, 'completed', completionNote);
             }
 
-            setSelectedTask((current) =>
+            setManualSelectedTask((current) =>
                 current && current.id === task.id
                     ? { ...current, status: 'completed', completionNote }
                     : current
@@ -122,7 +164,7 @@ const Dashboard: React.FC = () => {
                             <button
                                 key={`${task.originalTaskId}-${task.occurrenceDate}`}
                                 type="button"
-                                onClick={() => setSelectedTask(task)}
+                                onClick={() => setManualSelectedTask(task)}
                                 className="reminder-card"
                             >
                                 <div className="task-row-title">{task.title}</div>
@@ -140,7 +182,7 @@ const Dashboard: React.FC = () => {
                     getCategoryName={getCategoryName}
                     emptyText="Keine uberfalligen Wartungen."
                     accent="var(--danger)"
-                    onSelectTask={setSelectedTask}
+                    onSelectTask={setManualSelectedTask}
                     onMarkDone={handleMarkDone}
                 />
                 <TaskSection
@@ -149,7 +191,7 @@ const Dashboard: React.FC = () => {
                     getCategoryName={getCategoryName}
                     emptyText="Keine Wartungen fur heute."
                     accent="var(--primary)"
-                    onSelectTask={setSelectedTask}
+                    onSelectTask={setManualSelectedTask}
                     onMarkDone={handleMarkDone}
                 />
                 <TaskSection
@@ -158,7 +200,7 @@ const Dashboard: React.FC = () => {
                     getCategoryName={getCategoryName}
                     emptyText="Keine anstehenden Wartungen in den nachsten 14 Tagen."
                     accent="var(--text-muted)"
-                    onSelectTask={setSelectedTask}
+                    onSelectTask={setManualSelectedTask}
                     onMarkDone={handleMarkDone}
                 />
             </div>
@@ -171,7 +213,7 @@ const Dashboard: React.FC = () => {
                                 <h3 style={{ margin: 0 }}>{selectedTask.title}</h3>
                                 <div className="text-muted">{new Date(selectedTask.date).toLocaleDateString('de-CH')}</div>
                             </div>
-                            <button type="button" className="btn btn-ghost" onClick={() => setSelectedTask(null)} style={{ padding: '0.25rem' }}>
+                            <button type="button" className="btn btn-ghost" onClick={clearSelectedTask} style={{ padding: '0.25rem' }}>
                                 <X size={18} />
                             </button>
                         </div>

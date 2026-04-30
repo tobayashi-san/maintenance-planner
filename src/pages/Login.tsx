@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -8,6 +8,7 @@ const Login: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const login = useStore((state) => state.login);
     const navigate = useNavigate();
+    const location = useLocation();
 
     useEffect(() => {
         const saved = localStorage.getItem('theme');
@@ -19,7 +20,9 @@ const Login: React.FC = () => {
         setError(null);
         const success = await login({ email, password });
         if (success) {
-            navigate('/dashboard');
+            const params = new URLSearchParams(location.search);
+            const redirect = params.get('redirect');
+            navigate(redirect || '/dashboard');
         } else {
             setError('Invalid email or password');
         }

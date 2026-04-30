@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useStore } from './store/useStore';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -12,6 +12,7 @@ import { NotificationProvider } from './context/NotificationContext';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, user, fetchUsers, fetchTasks, fetchOccurrenceOverrides, fetchSmtpSettings, fetchAppSettings, fetchCategories, fetchTemplates } = useStore();
+  const location = useLocation();
 
   React.useEffect(() => {
     if (isAuthenticated) {
@@ -27,7 +28,8 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   }, [isAuthenticated, user?.role]);
 
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+  const redirectTarget = `${location.pathname}${location.search}${location.hash}`;
+  return isAuthenticated ? <>{children}</> : <Navigate to={`/login?redirect=${encodeURIComponent(redirectTarget)}`} replace />;
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {

@@ -41,6 +41,23 @@ const Calendar: React.FC = () => {
         return visibleTasks.filter((task) => new Date(task.date).toDateString() === selectedDate.toDateString());
     }, [selectedDate, visibleTasks]);
 
+    const resolveCalendarBaseUrl = () => {
+        const configured = appSettings.publicAppUrl?.trim();
+        const fallback = window.location.origin;
+        const candidate = configured || fallback;
+
+        if (!candidate) return null;
+
+        try {
+            const url = new URL(candidate);
+            if (!['http:', 'https:'].includes(url.protocol)) return null;
+            if (['localhost', '127.0.0.1'].includes(url.hostname)) return null;
+            return url.toString().replace(/\/+$/, '');
+        } catch {
+            return null;
+        }
+    };
+
     const handleExport = () => {
         const icsContent = generateICS(tasks);
         downloadICS('maintenance-calendar.ics', icsContent);
@@ -52,27 +69,28 @@ const Calendar: React.FC = () => {
             return;
         }
 
-        let baseUrl = appSettings.publicAppUrl?.trim() || window.location.origin;
-        if (!appSettings.publicAppUrl?.trim() && (baseUrl.includes('//localhost') || baseUrl.includes('//127.0.0.1'))) {
-            showToast('Fur Outlook brauchst du eine offentlich erreichbare APP_URL in den Admin-Einstellungen.', 'error');
+        const baseUrl = resolveCalendarBaseUrl();
+        if (!baseUrl) {
+            showToast('Bitte hinterlege unter Admin > App Links eine vollstandige URL wie http://10.0.9.120:3000 oder https://deine-domain.ch.', 'error');
             return;
         }
-        const url = `${baseUrl}/api/calendar.ics?token=${user.calendarToken}`;
+        const httpUrl = `${baseUrl}/api/calendar.ics?token=${user.calendarToken}`;
+        const outlookUrl = httpUrl.replace(/^https?:\/\//i, 'webcal://');
 
         try {
             if (navigator.clipboard) {
-                await navigator.clipboard.writeText(url);
+                await navigator.clipboard.writeText(outlookUrl);
             } else {
                 const el = document.createElement('textarea');
-                el.value = url;
+                el.value = outlookUrl;
                 document.body.appendChild(el);
                 el.select();
                 document.execCommand('copy');
                 document.body.removeChild(el);
             }
-            showToast('Outlook subscription URL copied to clipboard', 'success');
+            showToast(`Outlook-URL kopiert: ${outlookUrl}`, 'success');
         } catch {
-            showToast(`Could not copy URL: ${url}`, 'error');
+            showToast(`Konnte Outlook-URL nicht kopieren: ${outlookUrl}`, 'error');
         }
     };
 
