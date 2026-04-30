@@ -62,11 +62,12 @@ export const useNotification = () => {
 };
 
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const browserNotificationsAvailable = typeof window !== 'undefined' && window.isSecureContext && typeof Notification !== 'undefined';
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [readState, setReadState] = useState<Record<string, boolean>>(readStateFromStorage);
     const [browserSentState, setBrowserSentState] = useState<Record<string, boolean>>(sentStateFromStorage);
     const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
-        typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+        browserNotificationsAvailable ? Notification.permission : 'unsupported'
     );
     const { user, tasks, occurrenceOverrides } = useStore();
 
@@ -129,7 +130,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [browserSentState]);
 
     useEffect(() => {
-        if (permission !== 'granted') return;
+        if (permission !== 'granted' || !browserNotificationsAvailable) return;
 
         reminderNotifications.forEach((notification) => {
             if (browserSentState[notification.id]) return;
@@ -141,8 +142,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
                         registration.showNotification(notification.title, {
                             body,
                             tag: notification.id,
-                            icon: '/icons/app-icon.svg',
-                            badge: '/icons/app-icon.svg',
+                            icon: '/icons/app-icon-192.png',
+                            badge: '/icons/app-icon-192.png',
                             data: { url: '/dashboard' },
                         });
                     } else {
@@ -155,7 +156,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 setBrowserSentState((prev) => ({ ...prev, [notification.id]: true }));
             }
         });
-    }, [reminderNotifications, permission, browserSentState]);
+    }, [reminderNotifications, permission, browserSentState, browserNotificationsAvailable]);
 
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
         const id = generateId();
@@ -181,7 +182,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     };
 
     const requestBrowserPermission = async () => {
-        if (typeof Notification === 'undefined') {
+        if (!browserNotificationsAvailable) {
             setPermission('unsupported');
             return;
         }

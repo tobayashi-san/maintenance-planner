@@ -1,0 +1,29 @@
+services:
+  wartungskalender:
+    ports: !reset []
+    expose:
+      - "3000"
+    environment:
+      APP_URL: https://${INTERNAL_TLS_HOSTNAME}
+      ALLOWED_ORIGIN: https://${INTERNAL_TLS_HOSTNAME}
+
+  caddy:
+    image: caddy:2
+    container_name: wartungskalender-internal-tls
+    depends_on:
+      - wartungskalender
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      INTERNAL_TLS_HOSTNAME: ${INTERNAL_TLS_HOSTNAME}
+    volumes:
+      - ./Caddyfile.internal-tls:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy_internal_data:/data
+      - caddy_internal_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_internal_data:
+  caddy_internal_config:

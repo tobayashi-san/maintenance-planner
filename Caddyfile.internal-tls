@@ -1,0 +1,9 @@
+{$INTERNAL_TLS_HOSTNAME} {
+    encode gzip zstd
+    tls /certs/internal.crt /certs/internal.key
+
+    reverse_proxy wartungskalender:3000 {
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

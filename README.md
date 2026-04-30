@@ -129,7 +129,94 @@ Hinweis zu Outlook:
 - **Classic Outlook im selben LAN** kann mit internen `http://`- oder privaten IP-Links funktionieren.
 - **New Outlook** und **Outlook on the web / Microsoft 365** sind mit internen IPs und Internetkalendern oft unzuverlaessig oder koennen gar nicht darauf zugreifen.
 
-### Optionale HTTPS-Variante fuer Outlook / OWA
+### Empfohlene interne HTTPS-Variante fuer PWA und Web-Benachrichtigungen
+
+Wenn ihr **PWA-Installation**, **Service Worker** und **Browser-Benachrichtigungen** im internen Netzverlaesslich nutzen wollt, ist die beste Variante eine **interne HTTPS-Domain mit lokal vertrautem Zertifikat**.
+
+Diese Repo-Konfiguration ist dafuer vorbereitet:
+
+- Compose-Datei: `docker-compose.internal-tls.yml`
+- Proxy-Konfiguration: `Caddyfile.internal-tls`
+- Zertifikate im Repo-Pfad: `certs/internal.crt` und `certs/internal.key`
+
+#### Schnellstart
+
+1. Namen waehlen, z. B. `wartungskalender.intern`
+2. Diesen Namen intern auf euren Server zeigen lassen
+3. Vertrauenswuerdiges Zertifikat fuer genau diesen Namen erzeugen
+4. Zertifikat nach `certs/internal.crt` und `certs/internal.key` legen
+5. `INTERNAL_TLS_HOSTNAME` in `.env` setzen
+6. Mit `docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --build` starten
+7. Im Browser `https://wartungskalender.intern` aufrufen
+
+#### Schritt fuer Schritt
+
+Empfohlener Ablauf:
+
+1. Interne DNS- oder Hosts-Aufloesung einrichten, z. B.:
+   `wartungskalender.intern -> 10.0.9.120`
+   Falls ihr keinen internen DNS-Eintrag habt, koennt ihr zum Testen auf Windows in
+   `C:\Windows\System32\drivers\etc\hosts`
+   eine Zeile wie diese eintragen:
+
+```text
+10.0.9.120 wartungskalender.intern
+```
+
+2. Ein lokal vertrautes Zertifikat fuer diesen Hostnamen ausstellen.
+   Das kann ueber eure interne CA oder z. B. mit `mkcert` passieren.
+   Beispiel mit `mkcert` auf dem Host:
+
+```bash
+mkcert -install
+mkcert -cert-file certs/internal.crt -key-file certs/internal.key wartungskalender.intern
+```
+3. Zertifikat und Key hier ablegen:
+   - `certs/internal.crt`
+   - `certs/internal.key`
+4. In `.env` den internen Hostnamen setzen:
+
+```env
+JWT_SECRET=bitte-einen-langen-zufalligen-schluessel-verwenden
+INTERNAL_TLS_HOSTNAME=wartungskalender.intern
+INITIAL_ADMIN_NAME=Admin
+INITIAL_ADMIN_EMAIL=admin@example.com
+INITIAL_ADMIN_PASSWORD=use-a-long-random-password
+```
+
+5. Dann starten:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --build
+```
+
+Danach ist die App intern ueber `https://wartungskalender.intern` erreichbar.
+
+#### Was du danach pruefen solltest
+
+1. `https://wartungskalender.intern` oeffnet **ohne Zertifikatswarnung**
+2. Im Browser ist beim Schloss-Symbol kein Zertifikatsfehler sichtbar
+3. Der Install-Button bzw. die PWA-Installation erscheint
+4. Browser-Benachrichtigungen lassen sich aktivieren
+5. In der App unter `Admin > App Links` ist dieselbe HTTPS-URL hinterlegt
+
+Wichtig:
+
+- Das Zertifikat muss auf den Benutzergeraeten als **vertrauenswuerdig** gelten.
+- Ein nur selbstsigniertes, **nicht vertrautes** Zertifikat fuehrt weiter zu Browser-Warnungen und ist fuer PWA/Notifications deutlich unzuverlaessiger.
+- Wenn der Browser die App vorher schon ueber `http://10.x.x.x` gesehen hat, lohnt sich nach dem Umstieg ein neues Tab oder einmaliges Leeren der Website-Daten.
+- `INTERNAL_TLS_HOSTNAME` muss zum Zertifikat passen. Wenn das Zertifikat fuer `wartungskalender.intern` ausgestellt ist, darf die App nicht ueber `https://10.0.9.120` geoeffnet werden.
+
+#### Typische Fehler
+
+- **Browser zeigt Zertifikatswarnung**:
+  Das Zertifikat ist nicht vertraut oder passt nicht zum Hostnamen.
+- **PWA-Install fehlt**:
+  Meist ist die Seite noch nicht in einem echten Secure Context oder der Browser hat alte Daten vom HTTP-Aufruf gecacht.
+- **Benachrichtigungen bleiben blockiert**:
+  Erst HTTPS sauber machen, dann die Website-Berechtigung im Browser neu erlauben.
+
+### Optionale oeffentliche HTTPS-Variante fuer Outlook / OWA
 
 Wenn du spaeter doch eine **oeffentliche HTTPS-Domain** willst, kannst du zusaetzlich die Proxy-Datei verwenden:
 

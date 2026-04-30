@@ -17,6 +17,7 @@ const Layout: React.FC = () => {
     const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
     const [isInboxOpen, setIsInboxOpen] = useState(false);
     const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+    const isSecureBrowserContext = typeof window !== 'undefined' && window.isSecureContext;
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -70,7 +71,12 @@ const Layout: React.FC = () => {
             </aside>
             <div className="main-content">
                 <header className="top-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {!isSecureBrowserContext && (
+                            <div className="top-header-warning">
+                                PWA und Web-Benachrichtigungen brauchen HTTPS oder localhost. Auf internen http://10.x-Adressen blockiert der Browser beides.
+                            </div>
+                        )}
                         {installPrompt && (
                             <button onClick={installApp} className="btn btn-ghost" title="App installieren" style={{ padding: '0.375rem 0.625rem' }}>
                                 <Download size={16} /> Install
