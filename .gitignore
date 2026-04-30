@@ -7,8 +7,8 @@
 # Database
 DB/*.sqlite
 uploads/
-certs/*
-!certs/.gitkeep
+caddy_internal_data/
+caddy_internal_config/
 coverage/
 
 # Logs

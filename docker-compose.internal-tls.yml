@@ -19,11 +19,6 @@ services:
       INTERNAL_TLS_HOSTNAME: ${INTERNAL_TLS_HOSTNAME}
     volumes:
       - ./Caddyfile.internal-tls:/etc/caddy/Caddyfile:ro
-      - ./certs:/certs:ro
-      - caddy_internal_data:/data
-      - caddy_internal_config:/config
+      - ./caddy_internal_data:/data
+      - ./caddy_internal_config:/config
     restart: unless-stopped
-
-volumes:
-  caddy_internal_data:
-  caddy_internal_config:

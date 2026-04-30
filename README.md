@@ -131,22 +131,23 @@ Hinweis zu Outlook:
 
 ### Empfohlene interne HTTPS-Variante fuer PWA und Web-Benachrichtigungen
 
-Wenn ihr **PWA-Installation**, **Service Worker** und **Browser-Benachrichtigungen** im internen Netzverlaesslich nutzen wollt, ist die beste Variante eine **interne HTTPS-Domain mit lokal vertrautem Zertifikat**.
+Wenn ihr **PWA-Installation**, **Service Worker** und **Browser-Benachrichtigungen** im internen Netzverlaesslich nutzen wollt, ist die beste Variante eine **interne HTTPS-Domain mit lokal vertrauter CA**.
 
 Diese Repo-Konfiguration ist dafuer vorbereitet:
 
 - Compose-Datei: `docker-compose.internal-tls.yml`
 - Proxy-Konfiguration: `Caddyfile.internal-tls`
-- Zertifikate im Repo-Pfad: `certs/internal.crt` und `certs/internal.key`
+- Caddy erzeugt die interne CA und das Zertifikat automatisch
+- Die erzeugte Root-CA liegt danach lokal unter `caddy_internal_data/caddy/pki/authorities/local/root.crt`
 
 #### Schnellstart
 
 1. Namen waehlen, z. B. `wartungskalender.intern`
 2. Diesen Namen intern auf euren Server zeigen lassen
-3. Vertrauenswuerdiges Zertifikat fuer genau diesen Namen erzeugen
-4. Zertifikat nach `certs/internal.crt` und `certs/internal.key` legen
-5. `INTERNAL_TLS_HOSTNAME` in `.env` setzen
-6. Mit `docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --build` starten
+3. `INTERNAL_TLS_HOSTNAME` in `.env` setzen
+4. Mit `docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --build` starten
+5. Die von Caddy erzeugte Root-CA von `caddy_internal_data/caddy/pki/authorities/local/root.crt` holen
+6. Diese Root-CA auf den Benutzer-PCs importieren
 7. Im Browser `https://wartungskalender.intern` aufrufen
 
 #### Schritt fuer Schritt
@@ -163,18 +164,7 @@ Empfohlener Ablauf:
 10.0.9.120 wartungskalender.intern
 ```
 
-2. Ein lokal vertrautes Zertifikat fuer diesen Hostnamen ausstellen.
-   Das kann ueber eure interne CA oder z. B. mit `mkcert` passieren.
-   Beispiel mit `mkcert` auf dem Host:
-
-```bash
-mkcert -install
-mkcert -cert-file certs/internal.crt -key-file certs/internal.key wartungskalender.intern
-```
-3. Zertifikat und Key hier ablegen:
-   - `certs/internal.crt`
-   - `certs/internal.key`
-4. In `.env` den internen Hostnamen setzen:
+2. In `.env` den internen Hostnamen setzen:
 
 ```env
 JWT_SECRET=bitte-einen-langen-zufalligen-schluessel-verwenden
@@ -184,13 +174,29 @@ INITIAL_ADMIN_EMAIL=admin@example.com
 INITIAL_ADMIN_PASSWORD=use-a-long-random-password
 ```
 
-5. Dann starten:
+3. Dann starten:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --build
 ```
 
-Danach ist die App intern ueber `https://wartungskalender.intern` erreichbar.
+4. Danach erzeugt Caddy automatisch eine interne Root-CA und das Server-Zertifikat.
+   Die Root-CA findest du auf dem Server hier:
+
+```text
+./caddy_internal_data/caddy/pki/authorities/local/root.crt
+```
+
+5. Diese `root.crt` musst du **einmal pro Client-PC** als vertrauenswuerdige Stammzertifizierungsstelle importieren.
+   Auf Windows:
+   - `mmc` starten
+   - `Datei > Snap-In hinzufuegen/entfernen`
+   - `Zertifikate` fuer `Computerkonto`
+   - `Vertrauenswuerdige Stammzertifizierungsstellen > Zertifikate`
+   - `Importieren`
+   - `root.crt` waehlen
+
+6. Danach ist die App intern ueber `https://wartungskalender.intern` erreichbar.
 
 #### Was du danach pruefen solltest
 
@@ -202,15 +208,16 @@ Danach ist die App intern ueber `https://wartungskalender.intern` erreichbar.
 
 Wichtig:
 
-- Das Zertifikat muss auf den Benutzergeraeten als **vertrauenswuerdig** gelten.
-- Ein nur selbstsigniertes, **nicht vertrautes** Zertifikat fuehrt weiter zu Browser-Warnungen und ist fuer PWA/Notifications deutlich unzuverlaessiger.
+- Die von Caddy erzeugte **Root-CA** muss auf den Benutzergeraeten als **vertrauenswuerdig** gelten.
+- Ohne Import dieser Root-CA zeigt der Browser weiter Zertifikatswarnungen.
 - Wenn der Browser die App vorher schon ueber `http://10.x.x.x` gesehen hat, lohnt sich nach dem Umstieg ein neues Tab oder einmaliges Leeren der Website-Daten.
-- `INTERNAL_TLS_HOSTNAME` muss zum Zertifikat passen. Wenn das Zertifikat fuer `wartungskalender.intern` ausgestellt ist, darf die App nicht ueber `https://10.0.9.120` geoeffnet werden.
+- `INTERNAL_TLS_HOSTNAME` muss zum Zertifikat passen. Wenn der Hostname `wartungskalender.intern` ist, darf die App nicht ueber `https://10.0.9.120` geoeffnet werden.
+- Das Schoene daran: Auf dem Server braucht ihr **kein `mkcert`**, keine manuellen Zertifikatsdateien und keinen extra TLS-Schritt ausser `docker compose`.
 
 #### Typische Fehler
 
 - **Browser zeigt Zertifikatswarnung**:
-  Das Zertifikat ist nicht vertraut oder passt nicht zum Hostnamen.
+  Meist wurde `root.crt` auf dem Client noch nicht importiert oder der Browser wurde ueber die IP statt ueber den Hostnamen geoeffnet.
 - **PWA-Install fehlt**:
   Meist ist die Seite noch nicht in einem echten Secure Context oder der Browser hat alte Daten vom HTTP-Aufruf gecacht.
 - **Benachrichtigungen bleiben blockiert**:
