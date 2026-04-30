@@ -203,6 +203,7 @@ const PORT = process.env.PORT || 3000;
 
 // --- Helpers ---
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const generateCalendarToken = () => crypto.randomBytes(32).toString('hex');
 const normalizeAppUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
 const parseAssigneeIds = (value) => {
     try {
@@ -448,6 +449,67 @@ const sendWeeklyDigestEmail = async (cfg, appUrl, user, upcomingTasks, overdueTa
         text: `Uberfallig: ${overdueTasks.length}, diese Woche fallig: ${upcomingTasks.length}`,
     });
 };
+const renderCalendarFeed = (res, taskRows, overrideRows) => {
+    const tasks = taskRows.map((task) => ({ ...task, assigneeIds: task.assigneeIds ? JSON.parse(task.assigneeIds) : [] }));
+    const overrides = (overrideRows || []).map((row) => ({ ...row, skipped: Boolean(row.skipped) }));
+    const rangeStart = subYears(new Date(), 1);
+    const rangeEnd = addYears(new Date(), 3);
+    const instances = expandTasksForCalendar(tasks, overrides, rangeStart, rangeEnd);
+    const now = toUtcTimestamp(new Date());
+    const ics = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Wartungskalender//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'X-WR-CALNAME:Wartungskalender',
+        'X-WR-TIMEZONE:Europe/Zurich',
+        'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
+        'X-PUBLISHED-TTL:PT6H',
+    ];
+
+    instances.forEach((task) => {
+        const startDate = toDateValue(task.date);
+        const nextDate = addDays(new Date(task.date), 1);
+        const endDate = toDateValue(nextDate);
+
+        ics.push('BEGIN:VEVENT');
+        ics.push(`UID:${task.originalTaskId}-${startDate}@wartungskalender`);
+        ics.push(`DTSTAMP:${now}`);
+        ics.push(`DTSTART;VALUE=DATE:${startDate}`);
+        ics.push(`DTEND;VALUE=DATE:${endDate}`);
+        ics.push('X-MICROSOFT-CDO-ALLDAYEVENT:TRUE');
+        ics.push('TRANSP:TRANSPARENT');
+        ics.push(`SUMMARY:${escapeIcs(task.title)}`);
+        if (task.description) ics.push(`DESCRIPTION:${escapeIcs(task.description)}`);
+        if (task.completionNote) ics.push(`COMMENT:${escapeIcs(task.completionNote)}`);
+        ics.push(`STATUS:${task.status === 'completed' ? 'COMPLETED' : task.status === 'canceled' ? 'CANCELLED' : 'CONFIRMED'}`);
+        ics.push('END:VEVENT');
+    });
+
+    ics.push('END:VCALENDAR');
+
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="wartungskalender.ics"');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(ics.map(foldLine).join('\r\n') + '\r\n');
+};
+const serveCalendarFeed = (req, res) => {
+    const token = String(req.params.token || req.query.token || '');
+    if (!token) return res.status(401).send('Unauthorized');
+
+    db.get("SELECT id FROM users WHERE calendarToken = ?", [token], (err, user) => {
+        if (err || !user) return res.status(403).send('Forbidden');
+
+        db.all("SELECT * FROM tasks", [], (taskErr, taskRows) => {
+            if (taskErr) return res.status(500).send('Error');
+            db.all("SELECT * FROM task_occurrence_overrides", [], (overrideErr, overrideRows) => {
+                if (overrideErr) return res.status(500).send('Error');
+                renderCalendarFeed(res, taskRows, overrideRows);
+            });
+        });
+    });
+};
 
 // --- Middleware ---
 const authenticateToken = (req, res, next) => {
@@ -569,7 +631,7 @@ const migrateDb = () => {
         db.all("SELECT id FROM users WHERE calendarToken IS NULL", [], (err, rows) => {
             if (!err && rows) {
                 rows.forEach(r => {
-                    db.run("UPDATE users SET calendarToken = ? WHERE id = ?", [crypto.randomBytes(16).toString('hex'), r.id]);
+                    db.run("UPDATE users SET calendarToken = ? WHERE id = ?", [generateCalendarToken(), r.id]);
                 });
             }
         });
@@ -711,7 +773,7 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
         
         // Ensure calendarToken exists (lazy generation if missing)
         if (!user.calendarToken) {
-            const newCalendarToken = crypto.randomBytes(16).toString('hex');
+            const newCalendarToken = generateCalendarToken();
             db.run("UPDATE users SET calendarToken = ? WHERE id = ?", [newCalendarToken, user.id]);
             userWithoutPassword.calendarToken = newCalendarToken;
         }
@@ -745,7 +807,7 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
         
         // Lazy generation for existing logged in users
         if (!user.calendarToken) {
-            const newCalendarToken = crypto.randomBytes(16).toString('hex');
+            const newCalendarToken = generateCalendarToken();
             db.run("UPDATE users SET calendarToken = ? WHERE id = ?", [newCalendarToken, user.id]);
             user.calendarToken = newCalendarToken;
         }
@@ -767,7 +829,7 @@ app.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
     if (!isValidEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
     if (!password) return res.status(400).json({ error: 'Password is required' });
     const hashedPassword = await bcrypt.hash(password, 10);
-    const calendarToken = crypto.randomBytes(16).toString('hex');
+    const calendarToken = generateCalendarToken();
     db.run("INSERT INTO users (id, name, email, password, role, calendarToken) VALUES (?, ?, ?, ?, ?, ?)",
         [id, name, email, hashedPassword, role, calendarToken],
         (err) => {
@@ -1187,66 +1249,9 @@ app.get('/api/email/action', async (req, res) => {
     }
 });
 
-// 9. ICS Subscription (calendarToken via query param for Outlook compatibility)
-app.get('/api/calendar.ics', calendarLimiter, (req, res) => {
-    const token = req.query.token;
-    if (!token) return res.status(401).send('Unauthorized');
-    // Find user by calendarToken
-    db.get("SELECT id FROM users WHERE calendarToken = ?", [token], (err, user) => {
-        if (err || !user) return res.status(403).send('Forbidden');
-
-        db.all("SELECT * FROM tasks", [], (taskErr, taskRows) => {
-            if (taskErr) return res.status(500).send('Error');
-            db.all("SELECT * FROM task_occurrence_overrides", [], (overrideErr, overrideRows) => {
-                if (overrideErr) return res.status(500).send('Error');
-
-                const tasks = taskRows.map((task) => ({ ...task, assigneeIds: task.assigneeIds ? JSON.parse(task.assigneeIds) : [] }));
-                const overrides = (overrideRows || []).map((row) => ({ ...row, skipped: Boolean(row.skipped) }));
-                const rangeStart = subYears(new Date(), 1);
-                const rangeEnd = addYears(new Date(), 3);
-                const instances = expandTasksForCalendar(tasks, overrides, rangeStart, rangeEnd);
-                const now = toUtcTimestamp(new Date());
-                const ics = [
-                    'BEGIN:VCALENDAR',
-                    'VERSION:2.0',
-                    'PRODID:-//Wartungskalender//EN',
-                    'CALSCALE:GREGORIAN',
-                    'METHOD:PUBLISH',
-                    'X-WR-CALNAME:Wartungskalender',
-                    'X-WR-TIMEZONE:Europe/Zurich',
-                    'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
-                    'X-PUBLISHED-TTL:PT6H',
-                ];
-
-                instances.forEach((task) => {
-                    const startDate = toDateValue(task.date);
-                    const nextDate = addDays(new Date(task.date), 1);
-                    const endDate = toDateValue(nextDate);
-
-                    ics.push('BEGIN:VEVENT');
-                    ics.push(`UID:${task.originalTaskId}-${startDate}@wartungskalender`);
-                    ics.push(`DTSTAMP:${now}`);
-                    ics.push(`DTSTART;VALUE=DATE:${startDate}`);
-                    ics.push(`DTEND;VALUE=DATE:${endDate}`);
-                    ics.push('X-MICROSOFT-CDO-ALLDAYEVENT:TRUE');
-                    ics.push('TRANSP:TRANSPARENT');
-                    ics.push(`SUMMARY:${escapeIcs(task.title)}`);
-                    if (task.description) ics.push(`DESCRIPTION:${escapeIcs(task.description)}`);
-                    if (task.completionNote) ics.push(`COMMENT:${escapeIcs(task.completionNote)}`);
-                    ics.push(`STATUS:${task.status === 'completed' ? 'COMPLETED' : task.status === 'canceled' ? 'CANCELLED' : 'CONFIRMED'}`);
-                    ics.push('END:VEVENT');
-                });
-
-                ics.push('END:VCALENDAR');
-
-                res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-                res.setHeader('Content-Disposition', 'inline; filename="wartungskalender.ics"');
-                res.setHeader('Cache-Control', 'no-store');
-                res.send(ics.map(foldLine).join('\r\n') + '\r\n');
-            });
-        });
-    });
-});
+// 9. ICS Subscription
+app.get('/api/calendar.ics', calendarLimiter, serveCalendarFeed);
+app.get('/api/calendar/:token.ics', calendarLimiter, serveCalendarFeed);
 
 // 10. Health
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));

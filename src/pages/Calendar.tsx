@@ -92,7 +92,7 @@ const Calendar: React.FC = () => {
             showToast(error || 'Bitte hinterlege eine gueltige Outlook-URL.', 'error');
             return;
         }
-        const httpUrl = `${baseUrl}/api/calendar.ics?token=${user.calendarToken}`;
+        const httpUrl = `${baseUrl}/api/calendar/${user.calendarToken}.ics`;
         const outlookUrl = baseUrl.startsWith('https://')
             ? httpUrl.replace(/^https:\/\//i, 'webcal://')
             : httpUrl;
