@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { addDays, parseISO, startOfDay, subYears } from 'date-fns';
 import { useStore } from '../store/useStore';
 import { getTasksForRange } from '../utils/recurrence';
+import { generateId } from '../utils/id';
 
 interface Toast {
     id: string;
@@ -157,7 +158,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [reminderNotifications, permission, browserSentState]);
 
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-        const id = crypto.randomUUID();
+        const id = generateId();
         setToasts((prev) => [...prev, { id, message, type }]);
 
         setTimeout(() => {

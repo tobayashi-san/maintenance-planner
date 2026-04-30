@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Plus, Pencil, Trash2, X, Copy } from 'lucide-react';
 import { useStore, type Template } from '../store/useStore';
 import { useNotification } from '../context/NotificationContext';
+import { generateId } from '../utils/id';
 
 interface TemplateManagerProps {
     onApply: (template: Template) => void;
 }
 
 const emptyTemplate = (): Template => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     title: '',
     description: '',
     recurrence: 'none',

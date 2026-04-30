@@ -4,6 +4,7 @@ import { useStore, type Task, type Attachment } from '../store/useStore';
 import { sendEmail } from '../services/emailService';
 import { getTaskAssignmentEmailHtml } from '../utils/emailTemplates';
 import { generateIcsContent } from '../utils/icsHelper';
+import { generateId } from '../utils/id';
 import { useNotification } from '../context/NotificationContext';
 
 interface TaskModalProps {
@@ -50,7 +51,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSubmit, initia
             fetchAttachments(initialData.id).then(setAttachments);
         } else {
             setFormData({
-                id: crypto.randomUUID(),
+                id: generateId(),
                 title: '',
                 date: selectedDate ? toLocalDateString(selectedDate) : toLocalDateString(new Date()),
                 description: '',

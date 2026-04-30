@@ -8,6 +8,7 @@ import CategoryManager from '../components/CategoryManager';
 import TemplateManager from '../components/TemplateManager';
 import TaskModal from '../components/TaskModal';
 import { Plus } from 'lucide-react';
+import { generateId } from '../utils/id';
 
 type Tab = 'users' | 'categories' | 'templates' | 'smtp' | 'app';
 
@@ -36,7 +37,7 @@ const Admin: React.FC = () => {
 
     const handleApplyTemplate = (template: Template) => {
         setTaskFromTemplate({
-            id: crypto.randomUUID(),
+            id: generateId(),
             title: template.title,
             description: template.description,
             date: new Date().toISOString(),

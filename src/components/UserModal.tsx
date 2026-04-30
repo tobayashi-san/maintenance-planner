@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { sendEmail } from '../services/emailService';
 import { useStore, type User } from '../store/useStore';
 import { getWelcomeEmailHtml } from '../utils/emailTemplates';
+import { generateId } from '../utils/id';
 import { useNotification } from '../context/NotificationContext';
 
 interface UserModalProps {
@@ -47,7 +48,7 @@ const UserModal: React.FC<UserModalProps> = ({ isOpen, onClose, onSubmit, initia
             const array = new Uint8Array(12);
             crypto.getRandomValues(array);
             setFormData({
-                id: crypto.randomUUID(),
+                id: generateId(),
                 name: '',
                 email: '',
                 role: 'user',

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Plus, Trash2 } from 'lucide-react';
 import { useNotification } from '../context/NotificationContext';
+import { generateId } from '../utils/id';
 
 const CategoryManager: React.FC = () => {
     const { categories, addCategory, deleteCategory } = useStore();
@@ -11,7 +12,7 @@ const CategoryManager: React.FC = () => {
 
     const handleAdd = async () => {
         if (!name.trim()) return;
-        await addCategory({ id: crypto.randomUUID(), name, color });
+        await addCategory({ id: generateId(), name, color });
         setName('');
         showToast('Category added.', 'success');
     };

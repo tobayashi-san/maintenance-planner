@@ -41,6 +41,8 @@ app.use(helmet({
             upgradeInsecureRequests: isHttpsDeployment ? [] : null,
         },
     },
+    crossOriginOpenerPolicy: isHttpsDeployment,
+    originAgentCluster: isHttpsDeployment,
     strictTransportSecurity: isHttpsDeployment,
 }));
 app.use(cors({
