@@ -15,6 +15,9 @@
   --bg-card: #ffffff;
   --bg-sidebar: #ffffff;
   --bg-elevated: #f8fafc;
+  --calendar-weekend-bg: #f8f4ea;
+  --calendar-weekend-header-bg: #f3ead6;
+  --calendar-weekend-text: #9a6700;
 
   --text-main: #111827;
   --text-muted: #6b7280;
@@ -41,6 +44,9 @@
   --bg-card: #1e293b;
   --bg-sidebar: #1e293b;
   --bg-elevated: #162032;
+  --calendar-weekend-bg: #2b2416;
+  --calendar-weekend-header-bg: #3a2f18;
+  --calendar-weekend-text: #fbbf24;
 
   --text-main: #f1f5f9;
   --text-muted: #94a3b8;
@@ -572,6 +578,19 @@ tr:hover td {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 1.5rem;
+}
+
+.calendar-weekend-header {
+  background: var(--calendar-weekend-header-bg);
+  color: var(--calendar-weekend-text) !important;
+}
+
+.calendar-weekend-cell {
+  background: var(--calendar-weekend-bg);
+}
+
+.calendar-weekend-day-number {
+  color: var(--calendar-weekend-text) !important;
 }
 
 .calendar-day-panel {

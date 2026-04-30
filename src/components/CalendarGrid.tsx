@@ -1,5 +1,5 @@
 import React from 'react';
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, format, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, format, isSameMonth, isSameDay, addMonths, subMonths, getDay } from 'date-fns';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { type Task } from '../store/useStore';
 
@@ -38,8 +38,12 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, onDateChange, 
 
             {/* Day headers */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border-color)' }}>
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                    <div key={day} style={{ padding: '0.375rem 0.5rem', textAlign: 'center', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
+                    <div
+                        key={day}
+                        className={index >= 5 ? 'calendar-weekend-header' : undefined}
+                        style={{ padding: '0.375rem 0.5rem', textAlign: 'center', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                    >
                         {day}
                     </div>
                 ))}
@@ -51,6 +55,7 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, onDateChange, 
                     const dayTasks = tasks.filter(t => isSameDay(new Date(t.date), day));
                     const isCurrentMonth = isSameMonth(day, monthStart);
                     const isToday = isSameDay(day, new Date());
+                    const isWeekend = [0, 6].includes(getDay(day));
                     const col = idx % 7;
                     const borderRight = col < 6 ? '1px solid var(--border-color)' : 'none';
                     const row = Math.floor(idx / 7);
@@ -61,23 +66,31 @@ const CalendarGrid: React.FC<CalendarGridProps> = ({ currentDate, onDateChange, 
                         <div
                             key={day.toISOString()}
                             onClick={() => onDayClick(day)}
+                            className={isWeekend ? 'calendar-weekend-cell' : undefined}
                             style={{
                                 minHeight: '88px',
                                 padding: '0.375rem 0.5rem',
                                 cursor: 'pointer',
-                                background: isToday ? 'var(--primary-light)' : 'var(--bg-card)',
+                                background: isToday
+                                    ? 'var(--primary-light)'
+                                    : isWeekend
+                                        ? 'var(--calendar-weekend-bg)'
+                                        : 'var(--bg-card)',
                                 borderRight,
                                 borderBottom,
                                 opacity: isCurrentMonth ? 1 : 0.4,
                             }}
                         >
-                            <div style={{
-                                fontSize: '12px',
-                                fontWeight: isToday ? 700 : 400,
-                                color: isToday ? 'var(--primary)' : 'var(--text-main)',
-                                marginBottom: '0.25rem',
-                                lineHeight: 1
-                            }}>
+                            <div
+                                className={isWeekend && !isToday ? 'calendar-weekend-day-number' : undefined}
+                                style={{
+                                    fontSize: '12px',
+                                    fontWeight: isToday ? 700 : 400,
+                                    color: isToday ? 'var(--primary)' : 'var(--text-main)',
+                                    marginBottom: '0.25rem',
+                                    lineHeight: 1
+                                }}
+                            >
                                 {format(day, 'd')}
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
