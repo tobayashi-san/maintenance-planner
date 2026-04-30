@@ -18,6 +18,14 @@ const Layout: React.FC = () => {
     const [isInboxOpen, setIsInboxOpen] = useState(false);
     const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
     const isSecureBrowserContext = typeof window !== 'undefined' && window.isSecureContext;
+    const currentHostname = typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
+    const isInternalTlsHost = typeof window !== 'undefined'
+        && window.location.protocol === 'https:'
+        && (
+            currentHostname.endsWith('.intern')
+            || currentHostname.endsWith('.local')
+            || /^\d{1,3}(\.\d{1,3}){3}$/.test(currentHostname)
+        );
 
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -81,6 +89,16 @@ const Layout: React.FC = () => {
                             <button onClick={installApp} className="btn btn-ghost" title="App installieren" style={{ padding: '0.375rem 0.625rem' }}>
                                 <Download size={16} /> Install
                             </button>
+                        )}
+                        {isInternalTlsHost && (
+                            <a
+                                href="/downloads/internal-root-ca.crt"
+                                className="btn btn-ghost"
+                                title="Interne Root-CA herunterladen"
+                                style={{ padding: '0.375rem 0.625rem' }}
+                            >
+                                <Download size={16} /> Root CA
+                            </a>
                         )}
                         {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && (
                             <button onClick={requestBrowserPermission} className="btn btn-ghost" title="Browser-Benachrichtigungen aktivieren" style={{ padding: '0.375rem 0.625rem' }}>

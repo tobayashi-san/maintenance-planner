@@ -1,11 +1,22 @@
 services:
   wartungskalender:
-    ports: !reset []
-    expose:
-      - "3000"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wartungskalender
     environment:
+      NODE_ENV: production
+      PORT: 3000
       APP_URL: https://${INTERNAL_TLS_HOSTNAME}
       ALLOWED_ORIGIN: https://${INTERNAL_TLS_HOSTNAME}
+    expose:
+      - "3000"
+    env_file:
+      - .env
+    volumes:
+      - ./DB:/app/DB
+      - ./uploads:/app/uploads
+    restart: unless-stopped
 
   caddy:
     image: caddy:2

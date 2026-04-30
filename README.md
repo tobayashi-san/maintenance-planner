@@ -139,13 +139,14 @@ Diese Repo-Konfiguration ist dafuer vorbereitet:
 - Proxy-Konfiguration: `Caddyfile.internal-tls`
 - Caddy erzeugt die interne CA und das Zertifikat automatisch
 - Die erzeugte Root-CA liegt danach lokal unter `caddy_internal_data/caddy/pki/authorities/local/root.crt`
+- Die Root-CA ist direkt ueber die App downloadbar: `/downloads/internal-root-ca.crt`
 
 #### Schnellstart
 
 1. Namen waehlen, z. B. `wartungskalender.intern`
 2. Diesen Namen intern auf euren Server zeigen lassen
 3. `INTERNAL_TLS_HOSTNAME` in `.env` setzen
-4. Mit `docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --build` starten
+4. Mit `docker compose -f docker-compose.internal-tls.yml up -d --build` starten
 5. Die von Caddy erzeugte Root-CA von `caddy_internal_data/caddy/pki/authorities/local/root.crt` holen
 6. Diese Root-CA auf den Benutzer-PCs importieren
 7. Im Browser `https://wartungskalender.intern` aufrufen
@@ -177,7 +178,7 @@ INITIAL_ADMIN_PASSWORD=use-a-long-random-password
 3. Dann starten:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --build
+docker compose -f docker-compose.internal-tls.yml up -d --build
 ```
 
 4. Danach erzeugt Caddy automatisch eine interne Root-CA und das Server-Zertifikat.
@@ -185,6 +186,12 @@ docker compose -f docker-compose.yml -f docker-compose.internal-tls.yml up -d --
 
 ```text
 ./caddy_internal_data/caddy/pki/authorities/local/root.crt
+```
+
+   Oder direkt ueber denselben Host im Browser:
+
+```text
+https://wartungskalender.intern/downloads/internal-root-ca.crt
 ```
 
 5. Diese `root.crt` musst du **einmal pro Client-PC** als vertrauenswuerdige Stammzertifizierungsstelle importieren.
@@ -213,6 +220,7 @@ Wichtig:
 - Wenn der Browser die App vorher schon ueber `http://10.x.x.x` gesehen hat, lohnt sich nach dem Umstieg ein neues Tab oder einmaliges Leeren der Website-Daten.
 - `INTERNAL_TLS_HOSTNAME` muss zum Zertifikat passen. Wenn der Hostname `wartungskalender.intern` ist, darf die App nicht ueber `https://10.0.9.120` geoeffnet werden.
 - Das Schoene daran: Auf dem Server braucht ihr **kein `mkcert`**, keine manuellen Zertifikatsdateien und keinen extra TLS-Schritt ausser `docker compose`.
+- Fuer die Benutzer ist der einfachste Weg: App oeffnen, `Root CA` herunterladen, Zertifikat importieren, Browser neu starten.
 
 #### Typische Fehler
 

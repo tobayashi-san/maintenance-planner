@@ -2,6 +2,14 @@
     encode gzip zstd
     tls internal
 
+    handle /downloads/internal-root-ca.crt {
+        root * /data/caddy/pki/authorities/local
+        rewrite * /root.crt
+        header Content-Type application/x-x509-ca-cert
+        header Content-Disposition "attachment; filename=\"wartungskalender-root-ca.crt\""
+        file_server
+    }
+
     reverse_proxy wartungskalender:3000 {
         header_up X-Forwarded-Host {host}
         header_up X-Forwarded-Proto {scheme}
