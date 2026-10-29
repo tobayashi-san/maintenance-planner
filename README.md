@@ -1,5 +1,8 @@
 # Wartungskalender
 
+> [!NOTE]
+> Dieses Projekt ist archiviert und wird nicht mehr weiterentwickelt. Der Code bleibt als Referenz verfügbar.
+
 Wartungskalender ist eine App fuer wiederkehrende Wartungen, Erinnerungen und Team-Aufgaben. Sie bietet Kalenderansicht, Serienvorkommen, E-Mail-Erinnerungen, Outlook-/ICS-Links, PWA-Unterstuetzung und Browser-Benachrichtigungen.
 
 ## Schnellstart
